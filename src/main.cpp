@@ -57,7 +57,7 @@ class $modify(AIDecoratorEditorUI, EditorUI) {
             )->show();
             return;
         }
-        if (auto popup = DecoratorPopup::create(std::move(selection))) {
+        if (auto popup = DecoratorPopup::create(std::move(selection), this->getSelectedObjects())) {
             popup->show();
         }
     }

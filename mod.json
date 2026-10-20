@@ -8,10 +8,13 @@
 	},
 	"id": "bob0byte.ai-decorator",
 	"name": "AI Decorator",
-	"version": "v0.4.0",
+	"version": "v0.5.0",
 	"developer": "bob0byte",
-	"description": "Decorate a selected structure with one tap. Works offline, no API key needed.",
-	"tags": ["editor", "enhancement"],
+	"description": "Decorate a selected structure in styles learned from 139 real levels, and add trigger effects. Works offline.",
+	"tags": [
+		"editor",
+		"enhancement"
+	],
 	"dependencies": {
 		"geode.node-ids": ">=v1.23.3"
 	},
@@ -19,18 +22,34 @@
 		"max-objects": {
 			"type": "int",
 			"name": "Max Objects",
-			"description": "Upper limit on how many decoration objects the AI may place in one generation.",
-			"default": 150,
+			"description": "Upper limit on how many decoration objects are placed in one go.",
+			"default": 800,
 			"min": 10,
-			"max": 1000
+			"max": 5000
+		},
+		"layers-per-side": {
+			"type": "int",
+			"name": "Layers Per Side",
+			"description": "How many decorations can stack on one side of a block (real levels often stack 2-3 glow/detail pieces).",
+			"default": 2,
+			"min": 1,
+			"max": 4
+		},
+		"scenery-amount": {
+			"type": "float",
+			"name": "Background Scenery",
+			"description": "How much background decoration to add around the structure. 0 turns it off.",
+			"default": 1.0,
+			"min": 0.0,
+			"max": 3.0
 		},
 		"color-channel-start": {
 			"type": "int",
 			"name": "Style Color Channels",
-			"description": "Offline styles use 5 color channels starting at this one (outline, glow, fill, background, details). Pick a range your level doesn't use.",
+			"description": "Styles use up to 6 color channels starting at this one. Pick a range your level doesn't use.",
 			"default": 950,
 			"min": 1,
-			"max": 995
+			"max": 993
 		}
 	}
 }

@@ -1,6 +1,6 @@
 #include "StyleDecorator.hpp"
+#include "StyleData.hpp"
 
-#include <Geode/binding/ObjectToolbox.hpp>
 #include <Geode/binding/GameObject.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/binding/LevelSettingsObject.hpp>
@@ -11,251 +11,307 @@
 #include <map>
 #include <random>
 #include <set>
+#include <unordered_map>
 
 using namespace geode::prelude;
 
 namespace {
-    // ------------------------------------------------------------------
-    // Object library: built from the game's own object table at runtime,
-    // so every ID we use is guaranteed to exist and be non-solid decoration.
-    // ------------------------------------------------------------------
-    struct LibObject {
+    // ------------------------------------------------------------------ learned data
+
+    // One decoration rule: "on this side of this kind of object, put this deco here".
+    struct Item {
         int id;
-        std::string frame;  // lowercase sprite frame name
-        float w, h;
+        float share;           // how often this deco is the one used on this side
+        float along, out;      // offset in the side's frame (out = away from the object's center)
+        float rot;             // rotation relative to the side
+        float sx, sy;
+        float flipChance;
+        int z, zo;
+        int pal;               // palette index
+    };
+    struct Slot {
+        std::string anchor, side;
+        float rate;            // decorations per side
+        std::vector<Item> items;
+    };
+    struct SceneryItem {
+        int id; float share, sx, sy, rot; int z, pal; float dist;
+    };
+    struct Style {
+        std::string name;
+        int levels = 1;
+        std::vector<std::array<int, 4>> pal;   // r, g, b, blending
+        std::vector<Slot> slots;
+        float sceneryRate = 0;
+        std::vector<SceneryItem> scenery;
+    };
+    struct Data {
+        std::vector<Style> groups, levels;
+        std::unordered_map<int, std::string> category;  // gameplay object id -> category
+        bool ok = false;
+        std::string error;
     };
 
-    struct Library {
-        std::vector<LibObject> deco;
-        int square = 0;               // plain decoration square, used for outlines/fills
-        float squareScale = 1.f;      // scale that makes the square one block (30 units) wide
-        size_t scanned = 0;
-        std::vector<int> glows;       // edge glow pieces
-    };
+    float fnum(matjson::Value const& v) { return static_cast<float>(v.asDouble().unwrapOr(0.0)); }
+    int inum(matjson::Value const& v) { return static_cast<int>(std::lround(v.asDouble().unwrapOr(0.0))); }
 
-    std::string lower(std::string s) {
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
-        return s;
-    }
-
-    bool hasAny(std::string const& s, std::vector<char const*> const& words) {
-        for (auto w : words) if (s.find(w) != std::string::npos) return true;
-        return false;
-    }
-
-    Library const& library() {
-        static Library lib = [] {
-            Library l;
-            auto toolbox = ObjectToolbox::sharedState();
-            for (int id = 1; id <= 4600; id++) {
-                auto frameC = toolbox->intKeyToFrame(id);
-                auto obj = GameObject::createWithKey(id);
-                if (!obj) continue;
-                l.scanned++;
-                bool deco = obj->m_objectType == GameObjectType::Decoration || obj->m_isDecoration;
-                if (!deco) continue;
-                auto size = obj->getContentSize();
-                if (size.width < 1 || size.height < 1) continue;
-                l.deco.push_back({id, lower(frameC ? frameC : ""), size.width, size.height});
-            }
-
-            // A plain square: decoration, ~30x30, frame name looks like a block/square.
-            // Square-shaped decoration; size units vary by platform/texture quality, so match on shape.
-            auto isSquare = [](LibObject const& o) {
-                return o.w >= 8 && std::abs(o.w - o.h) / o.w < .08f;
-            };
-            auto pick = [&](LibObject const& o) { l.square = o.id; l.squareScale = 30.f / o.w; };
-            for (auto const& o : l.deco) {
-                if (isSquare(o) && hasAny(o.frame, {"square", "block"}) && !hasAny(o.frame, {"glow", "outline", "spike"})) {
-                    pick(o); break;
-                }
-            }
-            if (!l.square) {
-                for (auto const& o : l.deco) {
-                    if (isSquare(o) && !hasAny(o.frame, {"glow", "spike", "saw"})) { pick(o); break; }
-                }
-            }
-
-            // Glow pieces about one block wide.
-            for (auto const& o : l.deco) {
-                if (o.frame.find("glow") != std::string::npos && o.h <= o.w) {
-                    l.glows.push_back(o.id);
-                }
-            }
-
-            log::info("AI Decorator: object library has {} decoration objects, square={}, {} glow pieces",
-                l.deco.size(), l.square, l.glows.size());
-            return l;
-        }();
-        return lib;
-    }
-
-    std::vector<int> findDetails(std::vector<char const*> const& words) {
-        std::vector<int> out;
-        for (auto const& o : library().deco) {
-            if (o.w > 6 && o.w <= 90 && o.h > 6 && o.h <= 90 && hasAny(o.frame, words) && !hasAny(o.frame, {"glow"})) {
-                out.push_back(o.id);
-            }
+    Style parseStyle(matjson::Value const& s) {
+        Style st;
+        st.name = s["name"].asString().unwrapOr("Style");
+        if (s.contains("from")) st.levels = static_cast<int>(s["from"].asArray().map([](auto const& a) { return a.size(); }).unwrapOr(1));
+        for (auto const& p : s["pal"].asArray().unwrapOr(std::vector<matjson::Value>{})) {
+            st.pal.push_back({inum(p[0]), inum(p[1]), inum(p[2]), inum(p[3])});
         }
-        return out;
+        for (auto const& sl : s["slots"].asArray().unwrapOr(std::vector<matjson::Value>{})) {
+            Slot slot;
+            slot.anchor = sl["a"].asString().unwrapOr("");
+            slot.side = sl["s"].asString().unwrapOr("");
+            slot.rate = fnum(sl["rate"]);
+            for (auto const& it : sl["items"].asArray().unwrapOr(std::vector<matjson::Value>{})) {
+                slot.items.push_back({inum(it[0]), fnum(it[1]), fnum(it[2]), fnum(it[3]), fnum(it[4]), fnum(it[5]),
+                                      fnum(it[6]), fnum(it[7]), inum(it[8]), inum(it[9]), inum(it[10])});
+            }
+            st.slots.push_back(std::move(slot));
+        }
+        st.sceneryRate = fnum(s["scn"]["rate"]);
+        for (auto const& it : s["scn"]["items"].asArray().unwrapOr(std::vector<matjson::Value>{})) {
+            st.scenery.push_back({inum(it[0]), fnum(it[1]), fnum(it[2]), fnum(it[3]), fnum(it[4]), inum(it[5]), inum(it[6]), fnum(it[7])});
+        }
+        return st;
     }
 
-    // ------------------------------------------------------------------
-    // Style definitions
-    // ------------------------------------------------------------------
-    struct StyleDef {
-        ccColor3B outline, glow, fill, backdrop, detail;
-        bool fillOverlay;       // cover blocks with a flat colored square
-        bool glowEdges;
-        float outlineThickness; // fraction of a block
-        float backdropDensity;  // 0..1, chance per cell in the margin area
-        float detailChance;     // chance per exposed top edge
-        std::vector<char const*> detailWords;
-    };
+    Data const& data() {
+        static Data d = [] {
+            Data d;
+            auto parsed = matjson::parse(STYLE_DATA_JSON);
+            if (!parsed) {
+                d.error = "Style data is corrupted: " + parsed.unwrapErr().message;
+                return d;
+            }
+            auto root = parsed.unwrap();
+            for (auto const& s : root["styles"].asArray().unwrapOr(std::vector<matjson::Value>{})) d.groups.push_back(parseStyle(s));
+            for (auto const& s : root["levels"].asArray().unwrapOr(std::vector<matjson::Value>{})) d.levels.push_back(parseStyle(s));
+            for (auto const& [cat, ids] : root["cats"]) {
+                for (auto const& id : ids.asArray().unwrapOr(std::vector<matjson::Value>{})) d.category[inum(id)] = cat;
+            }
+            d.ok = !d.groups.empty();
+            log::info("AI Decorator: loaded {} style groups and {} level styles", d.groups.size(), d.levels.size());
+            return d;
+        }();
+        return d;
+    }
 
-    StyleDef styleDef(size_t i) {
-        switch (i) {
-            default:
-            case 0: return {{0, 255, 255}, {0, 200, 255}, {10, 12, 30}, {20, 0, 60}, {255, 0, 200},
-                true, true, .08f, .10f, .25f, {"light", "spark", "particle", "ring"}};
-            case 1: return {{255, 200, 60}, {255, 80, 0}, {40, 10, 5}, {90, 15, 0}, {255, 140, 0},
-                true, true, .10f, .12f, .35f, {"fire", "flame", "spike", "thorn"}};
-            case 2: return {{90, 80, 65}, {0, 0, 0}, {120, 105, 85}, {45, 40, 35}, {70, 120, 50},
-                false, false, .12f, .18f, .55f, {"rock", "stone", "brick", "crack", "vine", "grass", "chain"}};
-            case 3: return {{220, 245, 255}, {140, 210, 255}, {60, 110, 160}, {15, 35, 70}, {255, 255, 255},
-                true, true, .07f, .10f, .35f, {"ice", "crystal", "snow", "spike"}};
-            case 4: return {{40, 90, 40}, {120, 255, 120}, {70, 50, 30}, {20, 50, 25}, {80, 200, 80},
-                false, false, .10f, .14f, .65f, {"grass", "bush", "plant", "leaf", "vine", "flower", "tree"}};
-            case 5: return {{255, 255, 255}, {200, 200, 220}, {30, 30, 36}, {16, 16, 20}, {255, 255, 255},
-                true, false, .05f, .0f, .0f, {}};
+    Style const* styleFor(styles::StyleRef ref) {
+        auto const& d = data();
+        auto const& list = ref.level ? d.levels : d.groups;
+        return ref.index < list.size() ? &list[ref.index] : nullptr;
+    }
+
+    // Only use deco objects that exist in this game version and aren't hazards/solids.
+    bool usable(int id) {
+        static std::unordered_map<int, bool> cache;
+        if (auto it = cache.find(id); it != cache.end()) return it->second;
+        bool ok = false;
+        if (auto obj = GameObject::createWithKey(id)) {
+            ok = obj->m_objectType != GameObjectType::Hazard && obj->m_objectType != GameObjectType::Solid;
+        }
+        cache[id] = ok;
+        return ok;
+    }
+
+    std::string categoryOf(SelectedObject const& o) {
+        auto const& cats = data().category;
+        if (auto it = cats.find(o.id); it != cats.end()) return it->second;
+        // Newer objects not in the learned table: fall back to the game's own type.
+        switch (static_cast<GameObjectType>(o.type)) {
+            case GameObjectType::Solid: return "block";
+            case GameObjectType::Hazard: return "spike";
+            default: return "";
         }
     }
 
     using Cell = std::pair<int, int>;
-
     Cell cellOf(float x, float y) {
         return {static_cast<int>(std::floor(x / 30.f)), static_cast<int>(std::floor(y / 30.f))};
     }
-    float cx(int c) { return c * 30.f + 15.f; }
+
+    // Side frame: angle that turns the "top" frame onto this side (counter-clockwise, degrees).
+    float sideAngle(std::string const& side) {
+        if (side == "right") return 90.f;
+        if (side == "bottom") return 180.f;
+        if (side == "left") return 270.f;
+        return 0.f;
+    }
 }
 
-Result<styles::Result> styles::generate(size_t styleIndex, std::vector<SelectedObject> const& selection) {
-    auto const& lib = library();
-    if (!lib.square) {
-        return Err(fmt::format("No usable deco square found (scanned {}, deco {}). Send this to the dev!",
-            lib.scanned, lib.deco.size()));
+size_t styles::groupCount() { return data().groups.size(); }
+size_t styles::levelCount() { return data().levels.size(); }
+
+std::string styles::name(StyleRef ref) {
+    auto s = styleFor(ref);
+    return s ? s->name : "?";
+}
+
+std::string styles::description(StyleRef ref) {
+    auto s = styleFor(ref);
+    if (!s) return "";
+    if (ref.level) return "Style of this level";
+    return fmt::format("Learned from {} level{}", s->levels, s->levels == 1 ? "" : "s");
+}
+
+ccColor3B styles::swatch(StyleRef ref) {
+    auto s = styleFor(ref);
+    if (!s || s->pal.empty()) return {200, 200, 200};
+    // the most colorful palette entry
+    std::array<int, 4> best = s->pal[0];
+    int bestScore = -1;
+    for (auto const& p : s->pal) {
+        int mx = std::max({p[0], p[1], p[2]}), mn = std::min({p[0], p[1], p[2]});
+        int score = (mx - mn) * 2 + mx;
+        if (score > bestScore) { bestScore = score; best = p; }
     }
-    float sq = lib.squareScale;
+    return {static_cast<GLubyte>(best[0]), static_cast<GLubyte>(best[1]), static_cast<GLubyte>(best[2])};
+}
+
+Result<styles::Result> styles::generate(StyleRef ref, std::vector<SelectedObject> const& selection) {
+    auto const& d = data();
+    if (!d.ok) return Err(d.error.empty() ? std::string("No style data.") : d.error);
+    auto style = styleFor(ref);
+    if (!style) return Err("Unknown style.");
 
     auto mod = Mod::get();
     auto maxObjects = static_cast<size_t>(mod->getSettingValue<int64_t>("max-objects"));
-    int ch = static_cast<int>(mod->getSettingValue<int64_t>("color-channel-start"));
-    int chOutline = ch, chGlow = ch + 1, chFill = ch + 2, chBackdrop = ch + 3, chDetail = ch + 4;
+    int chStart = static_cast<int>(mod->getSettingValue<int64_t>("color-channel-start"));
+    int maxLayers = static_cast<int>(mod->getSettingValue<int64_t>("layers-per-side"));
+    float sceneryAmount = static_cast<float>(mod->getSettingValue<double>("scenery-amount"));
 
-    auto s = styleDef(styleIndex);
     std::mt19937 rng(std::random_device{}());
     auto chance = [&](float p) { return std::uniform_real_distribution<float>(0, 1)(rng) < p; };
     auto rnd = [&](float a, float b) { return std::uniform_real_distribution<float>(a, b)(rng); };
 
-    // Occupied grid cells from the selected solid objects.
-    std::set<Cell> solid;
-    for (auto const& o : selection) if (o.solid) solid.insert(cellOf(o.x, o.y));
-    if (solid.empty()) {
-        // Nothing solid selected (e.g. only deco); treat everything as the shape.
-        for (auto const& o : selection) solid.insert(cellOf(o.x, o.y));
+    // Gameplay objects in the selection, and which grid cells hold blocks.
+    struct Anchor { SelectedObject const* o; std::string cat; };
+    std::vector<Anchor> anchors;
+    std::set<Cell> cells;
+    for (auto const& o : selection) {
+        auto cat = categoryOf(o);
+        if (cat.empty()) continue;
+        anchors.push_back({&o, cat});
+        if (cat == "block" || cat == "platform" || cat == "slope") cells.insert(cellOf(o.x, o.y));
     }
+    if (anchors.empty()) return Err("Select some gameplay objects (blocks, spikes, saws...) to decorate.");
 
-    int minCX = INT_MAX, minCY = INT_MAX, maxCX = INT_MIN, maxCY = INT_MIN;
-    for (auto [x, y] : solid) {
-        minCX = std::min(minCX, x); maxCX = std::max(maxCX, x);
-        minCY = std::min(minCY, y); maxCY = std::max(maxCY, y);
+    // For each slot, pick which decorations this structure uses (once, so the look is consistent).
+    std::map<std::pair<std::string, std::string>, std::pair<float, std::vector<Item const*>>> picks;
+    for (auto const& slot : style->slots) {
+        std::vector<Item const*> pool;
+        std::vector<float> weights;
+        for (auto const& it : slot.items) {
+            if (!usable(it.id)) continue;
+            pool.push_back(&it); weights.push_back(it.share);
+        }
+        if (pool.empty()) continue;
+        int layers = std::clamp(static_cast<int>(std::lround(slot.rate)), 1, std::max(1, maxLayers));
+        std::vector<Item const*> chosen;
+        for (int l = 0; l < layers && !pool.empty(); l++) {
+            std::discrete_distribution<size_t> dist(weights.begin(), weights.end());
+            auto k = dist(rng);
+            chosen.push_back(pool[k]);
+            pool.erase(pool.begin() + k); weights.erase(weights.begin() + k);
+        }
+        picks[{slot.anchor, slot.side}] = {std::min(slot.rate, 1.f), std::move(chosen)};
     }
 
     styles::Result res;
     auto& out = res.objects;
-    auto add = [&](DecoObject o) { if (out.size() < maxObjects) out.push_back(o); };
-
-    auto has = [&](int x, int y) { return solid.count({x, y}) > 0; };
-    float thick = s.outlineThickness;
-
-    for (auto [x, y] : solid) {
-        // Flat fill over each block.
-        if (s.fillOverlay) {
-            DecoObject f;
-            f.id = lib.square; f.x = cx(x); f.y = cx(y); f.scale = sq;
-            f.zLayer = 3; f.zOrder = -5; f.mainColor = chFill; f.detailColor = chFill;
-            add(f);
-        }
-
-        // Outlines on exposed edges: thin stretched squares.
-        struct Edge { int dx, dy; };
-        for (auto e : {Edge{0, 1}, Edge{0, -1}, Edge{-1, 0}, Edge{1, 0}}) {
-            if (has(x + e.dx, y + e.dy)) continue;
-            DecoObject l;
-            l.id = lib.square;
-            l.x = cx(x) + e.dx * (15.f - 15.f * thick);
-            l.y = cx(y) + e.dy * (15.f - 15.f * thick);
-            l.scale = sq;
-            l.scaleX = e.dy != 0 ? 1.f : thick;
-            l.scaleY = e.dy != 0 ? thick : 1.f;
-            l.zLayer = 5; l.zOrder = 2; l.mainColor = chOutline; l.detailColor = chOutline;
-            add(l);
-
-            // Glow fading outward from the edge.
-            if (s.glowEdges && !lib.glows.empty()) {
-                DecoObject g;
-                g.id = lib.glows[0];
-                g.x = cx(x) + e.dx * 30.f;
-                g.y = cx(y) + e.dy * 30.f;
-                // Glow pieces fade upward by default: rotate so they fade away from the block.
-                g.rotation = e.dy == 1 ? 0.f : e.dy == -1 ? 180.f : e.dx == -1 ? 270.f : 90.f;
-                g.zLayer = 1; g.mainColor = chGlow; g.detailColor = chGlow;
-                add(g);
-            }
-        }
-    }
-
-    // Details sitting on top surfaces.
-    auto details = findDetails(s.detailWords);
-    if (!details.empty() && s.detailChance > 0) {
-        for (auto [x, y] : solid) {
-            if (has(x, y + 1) || !chance(s.detailChance)) continue;
-            DecoObject d;
-            d.id = details[std::uniform_int_distribution<size_t>(0, details.size() - 1)(rng)];
-            d.x = cx(x) + rnd(-8, 8);
-            d.y = cx(y) + 15.f + 10.f;
-            d.scale = rnd(.5f, 1.f);
-            d.flipX = chance(.5f);
-            d.zLayer = 3; d.zOrder = 1; d.mainColor = chDetail; d.detailColor = chDetail;
-            add(d);
-        }
-    }
-
-    // Background pieces around the structure (never on top of it).
-    if (s.backdropDensity > 0) {
-        for (int x = minCX - 3; x <= maxCX + 3; x++) {
-            for (int y = minCY - 2; y <= maxCY + 3; y++) {
-                if (has(x, y) || !chance(s.backdropDensity)) continue;
-                DecoObject b;
-                b.id = lib.square;
-                b.x = cx(x); b.y = cx(y);
-                b.scale = sq * rnd(.6f, 2.2f);
-                b.rotation = styleIndex == 2 ? rnd(-8, 8) : 0.f;  // ruins look a bit crooked
-                b.zLayer = -3; b.zOrder = -10; b.mainColor = chBackdrop; b.detailColor = chBackdrop;
-                add(b);
-            }
-        }
-    }
-
-    if (out.empty()) return Err("This style had nothing to add to the selection.");
-
-    res.colors = {
-        {chOutline, s.outline, false},
-        {chGlow, s.glow, true},
-        {chFill, s.fill, false},
-        {chBackdrop, s.backdrop, false},
-        {chDetail, s.detail, false},
+    std::set<std::tuple<int, int, int, int>> placed;  // de-duplicate identical placements
+    auto place = [&](DecoObject o) {
+        if (out.size() >= maxObjects) return;
+        auto key = std::make_tuple(o.id, static_cast<int>(std::lround(o.x)), static_cast<int>(std::lround(o.y)),
+                                   static_cast<int>(std::lround(o.rotation)) % 360);
+        if (!placed.insert(key).second) return;
+        out.push_back(o);
     };
+    auto channelFor = [&](int pal) { return pal >= 0 && pal < static_cast<int>(style->pal.size()) ? chStart + pal : 0; };
+
+    for (auto const& a : anchors) {
+        auto const& o = *a.o;
+        bool gridded = a.cat == "block" || a.cat == "platform" || a.cat == "slope";
+        auto [cx, cy] = cellOf(o.x, o.y);
+        int quarter = ((static_cast<int>(std::lround(o.rotation / 90.f)) % 4) + 4) % 4;
+
+        for (std::string side : {"center", "top", "bottom", "left", "right"}) {
+            auto pk = picks.find({a.cat, side});
+            if (pk == picks.end()) continue;
+
+            // Skip faces that touch another block (decorators leave those alone).
+            if (gridded && side != "center") {
+                int dx = side == "right" ? 1 : side == "left" ? -1 : 0;
+                int dy = side == "top" ? 1 : side == "bottom" ? -1 : 0;
+                int wdx = dx, wdy = dy;  // rotate the side direction into the world (clockwise quarters)
+                for (int q = 0; q < quarter; q++) { int t = wdx; wdx = wdy; wdy = -t; }
+                if (cells.count({cx + wdx, cy + wdy})) continue;
+            }
+            if (!chance(pk->second.first)) continue;
+
+            float alpha = sideAngle(side) * static_cast<float>(M_PI) / 180.f;
+            float th = o.rotation * static_cast<float>(M_PI) / 180.f;
+            for (auto it : pk->second.second) {
+                // side frame -> object frame
+                float lx = it->along * std::cos(alpha) + it->out * std::sin(alpha);
+                float ly = -it->along * std::sin(alpha) + it->out * std::cos(alpha);
+                if (o.flipX) lx = -lx;
+                if (o.flipY) ly = -ly;
+                // object frame -> world (GD rotation is clockwise)
+                DecoObject deco;
+                deco.id = it->id;
+                deco.x = o.x + lx * std::cos(th) + ly * std::sin(th);
+                deco.y = o.y - lx * std::sin(th) + ly * std::cos(th);
+                deco.rotation = std::fmod(it->rot + o.rotation + sideAngle(side) + 720.f, 360.f);
+                deco.scaleX = it->sx; deco.scaleY = it->sy;
+                deco.flipX = chance(it->flipChance);
+                deco.zLayer = it->z; deco.zOrder = it->zo;
+                deco.mainColor = channelFor(it->pal);
+                deco.detailColor = deco.mainColor;
+                place(deco);
+            }
+        }
+    }
+
+    // Background scenery around (not on) the structure.
+    if (!style->scenery.empty() && sceneryAmount > 0) {
+        float minX = INFINITY, maxX = -INFINITY, minY = INFINITY, maxY = -INFINITY;
+        for (auto const& a : anchors) {
+            minX = std::min(minX, a.o->x); maxX = std::max(maxX, a.o->x);
+            minY = std::min(minY, a.o->y); maxY = std::max(maxY, a.o->y);
+        }
+        std::vector<SceneryItem const*> pool; std::vector<float> w;
+        for (auto const& s : style->scenery) if (usable(s.id)) { pool.push_back(&s); w.push_back(s.share); }
+        if (!pool.empty()) {
+            std::discrete_distribution<size_t> dist(w.begin(), w.end());
+            int count = std::min(static_cast<int>(anchors.size() * std::min(style->sceneryRate, 3.f) * sceneryAmount), 400);
+            for (int i = 0; i < count; i++) {
+                auto s = pool[dist(rng)];
+                float r = std::clamp(s->dist, 45.f, 240.f) * rnd(.7f, 1.3f);
+                float x = rnd(minX - 60, maxX + 60);
+                float y = chance(.5f) ? maxY + r : minY - r;
+                if (cells.count(cellOf(x, y))) continue;
+                DecoObject deco;
+                deco.id = s->id; deco.x = x; deco.y = y;
+                deco.rotation = s->rot; deco.scaleX = s->sx; deco.scaleY = s->sy;
+                deco.zLayer = s->z; deco.mainColor = channelFor(s->pal); deco.detailColor = deco.mainColor;
+                place(deco);
+            }
+        }
+    }
+
+    if (out.empty()) return Err("This style has no rules for the objects you selected.");
+
+    for (size_t i = 0; i < style->pal.size(); i++) {
+        auto const& p = style->pal[i];
+        res.colors.push_back({chStart + static_cast<int>(i),
+            {static_cast<GLubyte>(p[0]), static_cast<GLubyte>(p[1]), static_cast<GLubyte>(p[2])}, p[3] != 0});
+    }
     return Ok(std::move(res));
 }
 
