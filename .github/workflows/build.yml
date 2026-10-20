@@ -1,5 +1,8 @@
 name: Build Geode Mod
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   push:
@@ -38,12 +41,24 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the mod
+        id: build
         uses: geode-sdk/build-geode-mod@main
         with:
           bindings: geode-sdk/bindings
           bindings-ref: main
           combine: true
           target: ${{ matrix.config.target }}
+
+      - name: Publish to the "latest" release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          out="${{ steps.build.outputs.build-output }}"
+          f=$(find "$out" -name '*.geode' | head -1)
+          cp "$f" "ai-decorator-${{ matrix.config.name }}.geode"
+          gh release upload latest "ai-decorator-${{ matrix.config.name }}.geode" --clobber -R ${{ github.repository }}
 
       # Re-run the build on failure and surface compiler errors as annotations,
       # so they show up on the run summary page without opening the full log.
