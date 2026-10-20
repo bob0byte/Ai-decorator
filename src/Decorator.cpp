@@ -41,7 +41,7 @@ Fields other than id, x and y may be omitted.)";
         return def;
     }
 
-    bool boolean(matjson::Value const& v, std::string_view key) {
+    bool flag(matjson::Value const& v, std::string_view key) {
         if (!v.contains(key)) return false;
         return v[key].asBool().unwrapOr(false);
     }
@@ -169,8 +169,8 @@ Result<std::vector<DecoObject>> decorator::parseResponse(matjson::Value const& r
         o.y = num(v, "y", 0);
         o.rotation = num(v, "rotation", 0);
         o.scale = std::clamp(num(v, "scale", 1), 0.05f, 10.f);
-        o.flipX = boolean(v, "flipX");
-        o.flipY = boolean(v, "flipY");
+        o.flipX = flag(v, "flipX");
+        o.flipY = flag(v, "flipY");
         o.zLayer = integer(v, "zLayer", 0);
         o.zOrder = std::clamp(integer(v, "zOrder", 0), -100, 100);
         o.mainColor = std::clamp(integer(v, "mainColor", 0), 0, 1101);
