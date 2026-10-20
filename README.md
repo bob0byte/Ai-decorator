@@ -1,21 +1,21 @@
 # AI Decorator
 
-A [Geode](https://geode-sdk.org) mod for Geometry Dash 2.2081. Build a structure in the editor, select it, press the **AI** button, describe how you want it to look, and Claude generates decoration objects around it.
+A [Geode](https://geode-sdk.org) mod for Geometry Dash 2.2081. Build a structure in the editor, select it, press the **AI** button, describe how you want it to look, and Google Gemini (free tier) generates decoration objects around it.
 
 ## How it works
 
 1. `src/main.cpp` hooks `EditorUI::init` and adds an **AI** button to the editor's button menu (`editor-buttons-menu`).
 2. Pressing it reads the current selection (object IDs, positions, rotation, scale) and opens `DecoratorPopup`.
-3. The popup sends the selection plus your description to the Claude Messages API (`src/Decorator.cpp` builds the prompt).
-4. Claude answers with a JSON list of objects (`id`, `x`, `y`, `rotation`, `scale`, flips, z layer/order, color channels).
+3. The popup sends the selection plus your description to the Gemini generateContent API (`src/Decorator.cpp` builds the prompt).
+4. Gemini answers with a JSON list of objects (`id`, `x`, `y`, `rotation`, `scale`, flips, z layer/order, color channels).
 5. The mod converts that into a GD object string, creates the objects with `LevelEditorLayer::createObjectsFromString`, adds a single undo step, and selects the result.
 
 ## Settings
 
 | Setting | What it does |
 |---|---|
-| Anthropic API Key | Required. Your key from console.anthropic.com. |
-| Model | Claude model ID (default `claude-sonnet-5-5`). |
+| Gemini API Key | Required. Free key from aistudio.google.com/apikey, no card needed. |
+| Model | Gemini model ID (default `gemini-3.8-flash`; `gemini-3.5-flash-lite` has higher free limits). |
 | Max Objects | Cap on objects per generation (default 150). |
 | Object Palette | Optional `id:description` list of objects the AI should prefer. |
 

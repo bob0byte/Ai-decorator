@@ -8,7 +8,7 @@
 	},
 	"id": "bob0byte.ai-decorator",
 	"name": "AI Decorator",
-	"version": "v0.1.0",
+	"version": "v0.2.0",
 	"developer": "bob0byte",
 	"description": "Select a structure in the editor, describe the look you want, and let AI decorate it.",
 	"tags": ["editor", "enhancement"],
@@ -18,15 +18,15 @@
 	"settings": {
 		"api-key": {
 			"type": "string",
-			"name": "Anthropic API Key",
-			"description": "Your Claude API key from <cy>console.anthropic.com</c>. Requests are sent straight from your game to Anthropic; the key is stored only in your Geode save folder.",
+			"name": "Gemini API Key",
+			"description": "Your free Gemini API key from <cy>aistudio.google.com/apikey</c> (no payment needed). Requests go straight from your game to Google; the key is stored only in your Geode save folder.",
 			"default": ""
 		},
 		"model": {
 			"type": "string",
 			"name": "Model",
-			"description": "Claude model ID used for generating decorations.",
-			"default": "claude-sonnet-5-5"
+			"description": "Gemini model ID. Flash and Flash-Lite models are on the free tier; switch to <cy>gemini-3.5-flash-lite</c> if you hit limits.",
+			"default": "gemini-3.8-flash"
 		},
 		"max-objects": {
 			"type": "int",

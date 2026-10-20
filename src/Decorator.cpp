@@ -106,17 +106,26 @@ matjson::Value decorator::buildRequest(std::vector<SelectedObject> const& select
         objs.dump(matjson::NO_INDENTATION)
     );
 
-    auto messages = matjson::Value::array();
-    messages.push(matjson::makeObject({
+    // Gemini generateContent request body.
+    auto sysParts = matjson::Value::array();
+    sysParts.push(matjson::makeObject({{"text", SYSTEM_PROMPT}}));
+
+    auto userParts = matjson::Value::array();
+    userParts.push(matjson::makeObject({{"text", userMessage}}));
+
+    auto contents = matjson::Value::array();
+    contents.push(matjson::makeObject({
         {"role", "user"},
-        {"content", userMessage},
+        {"parts", userParts},
     }));
 
     return matjson::makeObject({
-        {"model", mod->getSettingValue<std::string>("model")},
-        {"max_tokens", 16000},
-        {"system", SYSTEM_PROMPT},
-        {"messages", messages},
+        {"systemInstruction", matjson::makeObject({{"parts", sysParts}})},
+        {"contents", contents},
+        {"generationConfig", matjson::makeObject({
+            {"responseMimeType", "application/json"},
+            {"maxOutputTokens", 32000},
+        })},
     });
 }
 
@@ -128,13 +137,18 @@ Result<std::vector<DecoObject>> decorator::parseResponse(matjson::Value const& r
         return Err("API error: " + msg);
     }
 
-    // Join all text blocks from the response content.
+    // Join the text parts of the first candidate (skipping any "thought" parts).
     std::string text;
-    if (auto content = response["content"].asArray(); content.isOk()) {
-        for (auto const& block : content.unwrap()) {
-            if (block.contains("type") && block["type"].asString().unwrapOr("") == "text") {
-                text += block["text"].asString().unwrapOr("");
+    if (auto cands = response["candidates"].asArray(); cands.isOk() && !cands.unwrap().empty()) {
+        auto const& cand = cands.unwrap()[0];
+        if (auto parts = cand["content"]["parts"].asArray(); parts.isOk()) {
+            for (auto const& part : parts.unwrap()) {
+                if (part.contains("thought") && part["thought"].asBool().unwrapOr(false)) continue;
+                if (part.contains("text")) text += part["text"].asString().unwrapOr("");
             }
+        }
+        if (text.empty() && cand.contains("finishReason")) {
+            return Err("The AI stopped early (" + cand["finishReason"].asString().unwrapOr("unknown") + "). Try a lower Max Objects.");
         }
     }
     if (text.empty()) return Err("The AI returned an empty response.");

@@ -29,7 +29,7 @@ namespace decorator {
     // Reads the editor's current selection.
     std::vector<SelectedObject> collectSelection(EditorUI* ui);
 
-    // Builds the request body for the Claude Messages API.
+    // Builds the request body for the Gemini generateContent API.
     matjson::Value buildRequest(std::vector<SelectedObject> const& selection, std::string const& userPrompt);
 
     // Pulls the decoration list out of the API response.

@@ -102,9 +102,10 @@ void DecoratorPopup::onGenerate(CCObject*) {
 
     auto apiKey = Mod::get()->getSettingValue<std::string>("api-key");
     if (apiKey.empty()) {
-        setStatus("Add your Anthropic API key in the mod settings first.", {255, 120, 120});
+        setStatus("Add your free Gemini API key in the mod settings first.", {255, 120, 120});
         return;
     }
+    auto model = Mod::get()->getSettingValue<std::string>("model");
 
     setBusy(true);
     setStatus("Decorating... this can take up to a minute.", {255, 220, 120});
@@ -112,15 +113,14 @@ void DecoratorPopup::onGenerate(CCObject*) {
     auto body = decorator::buildRequest(m_selection, prompt);
 
     auto req = web::WebRequest()
-        .header("x-api-key", apiKey)
-        .header("anthropic-version", "2023-06-01")
+        .header("x-goog-api-key", apiKey)
         .header("content-type", "application/json")
         .timeout(std::chrono::seconds(180))
         .bodyJSON(body);
 
     // Keep the popup alive until the response lands so the callback can update it.
     async::spawn(
-        req.post("https://api.anthropic.com/v1/messages"),
+        req.post(fmt::format("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", model)),
         [self = Ref<DecoratorPopup>(this)](web::WebResponse res) {
             self->onResponse(std::move(res));
         }
@@ -131,6 +131,10 @@ void DecoratorPopup::onResponse(web::WebResponse res) {
     setBusy(false);
 
     auto json = res.json();
+    if (res.code() == 429) {
+        setStatus("Free-tier limit reached. Wait a minute (or until tomorrow) and try again.", {255, 120, 120});
+        return;
+    }
     if (!json) {
         setStatus(fmt::format("Request failed (HTTP {}).", res.code()), {255, 120, 120});
         log::error("AI Decorator: bad response ({}): {}", res.code(), res.string().unwrapOr(""));
