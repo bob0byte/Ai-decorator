@@ -36,7 +36,7 @@ namespace {
         return s;
     }
 
-    bool hasAny(std::string const& s, std::initializer_list<char const*> words) {
+    bool hasAny(std::string const& s, std::vector<char const*> const& words) {
         for (auto w : words) if (s.find(w) != std::string::npos) return true;
         return false;
     }
@@ -82,7 +82,7 @@ namespace {
         return lib;
     }
 
-    std::vector<int> findDetails(std::initializer_list<char const*> words) {
+    std::vector<int> findDetails(std::vector<char const*> const& words) {
         std::vector<int> out;
         for (auto const& o : library().deco) {
             if (o.w > 6 && o.w <= 90 && o.h > 6 && o.h <= 90 && hasAny(o.frame, words) && !hasAny(o.frame, {"glow"})) {
@@ -102,7 +102,7 @@ namespace {
         float outlineThickness; // fraction of a block
         float backdropDensity;  // 0..1, chance per cell in the margin area
         float detailChance;     // chance per exposed top edge
-        std::initializer_list<char const*> detailWords;
+        std::vector<char const*> detailWords;
     };
 
     StyleDef styleDef(size_t i) {
