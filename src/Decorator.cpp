@@ -1,4 +1,5 @@
 #include "Decorator.hpp"
+#include <Geode/binding/GameObject.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -68,6 +69,7 @@ std::vector<SelectedObject> decorator::collectSelection(EditorUI* ui) {
             pos.x, pos.y,
             obj->getRotation(),
             obj->m_scaleX, obj->m_scaleY,
+            obj->m_objectType == GameObjectType::Solid,
         });
     }
     return out;
@@ -210,6 +212,9 @@ std::string decorator::toObjectString(std::vector<DecoObject> const& objects) {
         if (o.zLayer != 0) out += fmt::format(",24,{}", o.zLayer);
         if (o.zOrder != 0) out += fmt::format(",25,{}", o.zOrder);
         if (o.scale != 1) out += ",32," + fmtNum(o.scale);
+        if (o.scaleX * o.scale != 1 || o.scaleY * o.scale != 1) {
+            out += ",128," + fmtNum(o.scaleX * o.scale) + ",129," + fmtNum(o.scaleY * o.scale);
+        }
         out += ";";
     }
     return out;

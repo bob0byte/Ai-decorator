@@ -8,9 +8,9 @@
 	},
 	"id": "bob0byte.ai-decorator",
 	"name": "AI Decorator",
-	"version": "v0.2.0",
+	"version": "v0.3.0",
 	"developer": "bob0byte",
-	"description": "Select a structure in the editor, describe the look you want, and let AI decorate it.",
+	"description": "Decorate a selected structure with one tap using offline styles, or describe a look and let AI do it.",
 	"tags": ["editor", "enhancement"],
 	"dependencies": {
 		"geode.node-ids": ">=v1.23.3"
@@ -19,7 +19,7 @@
 		"api-key": {
 			"type": "string",
 			"name": "Gemini API Key",
-			"description": "Your free Gemini API key from <cy>aistudio.google.com/apikey</c> (no payment needed). Requests go straight from your game to Google; the key is stored only in your Geode save folder.",
+			"description": "Your free Gemini API key from <cy>aistudio.google.com/apikey</c> (no payment needed). Only needed for typed prompts; the style buttons work offline. Requests go straight from your game to Google; the key is stored only in your Geode save folder.",
 			"default": ""
 		},
 		"model": {
@@ -35,6 +35,14 @@
 			"default": 150,
 			"min": 10,
 			"max": 1000
+		},
+		"color-channel-start": {
+			"type": "int",
+			"name": "Style Color Channels",
+			"description": "Offline styles use 5 color channels starting at this one (outline, glow, fill, background, details). Pick a range your level doesn't use.",
+			"default": 950,
+			"min": 1,
+			"max": 995
 		},
 		"palette": {
 			"type": "string",

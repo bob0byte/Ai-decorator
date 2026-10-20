@@ -14,7 +14,7 @@ using namespace geode::prelude;
 namespace {
     constexpr float W = 440.f, H = 300.f;
     // Preview area (in main layer coordinates).
-    constexpr float PX = 16.f, PY = 66.f, PW = 408.f, PH = 188.f;
+    constexpr float PX = 16.f, PY = 98.f, PW = 408.f, PH = 156.f;
     constexpr float FONT_UP = 2.f;  // labels inside half-scaled rounded sprites are scaled up by this
 
     // Rounded rectangle. Built at 2x and scaled down so corners stay small and crisp.
@@ -156,13 +156,31 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection) {
         clipper->addChild(n, 12);
     }
 
+    // ---- Style row (offline, no AI) ----
+    {
+        constexpr float pillW = 62.f, gap = 4.f, rowY2 = 76.f;
+        auto n = styles::STYLES.size();
+        float startX = W / 2 - (n * pillW + (n - 1) * gap) / 2 + pillW / 2;
+        for (size_t i = 0; i < n; i++) {
+            CCScale9Sprite* pillBg = nullptr;
+            CCLabelBMFont* pillLbl = nullptr;
+            auto pill = roundedButton(pillW, 22, styles::STYLES[i].name, .45f, this,
+                menu_selector(DecoratorPopup::onStyle), &pillBg, &pillLbl);
+            pillBg->setColor(mix({30, 30, 36}, styles::STYLES[i].swatch, .35f));
+            pillLbl->setColor(mix({255, 255, 255}, styles::STYLES[i].swatch, .35f));
+            pill->setTag(static_cast<int>(i));
+            pill->setPosition({startX + i * (pillW + gap), rowY2});
+            m_buttonMenu->addChild(pill);
+        }
+    }
+
     // ---- Input row ----
     constexpr float rowY = 34.f, inputW = 316.f;
     m_inputBg = rounded(inputW, 36);
     m_inputBg->setPosition({PX + inputW / 2, rowY});
     m_mainLayer->addChild(m_inputBg);
 
-    m_input = TextInput::create(inputW - 16, "Describe how you want it to look...", "chatFont.fnt");
+    m_input = TextInput::create(inputW - 16, "Or describe a look for the AI...", "chatFont.fnt");
     m_input->hideBG();
     m_input->setTextAlign(TextInputAlign::Left);
     m_input->setCommonFilter(CommonFilter::Any);
@@ -228,7 +246,7 @@ void DecoratorPopup::buildPreview(bool after) {
     for (auto const& o : m_selection) items.push_back({o.id, o.x, o.y, o.rotation, o.scaleX, o.scaleY, false, false, 0});
     if (after) {
         for (auto const& d : m_result) {
-            items.push_back({d.id, d.x, d.y, d.rotation, d.scale, d.scale, d.flipX, d.flipY, d.zLayer * 1000 + d.zOrder});
+            items.push_back({d.id, d.x, d.y, d.rotation, d.scale * d.scaleX, d.scale * d.scaleY, d.flipX, d.flipY, d.zLayer * 1000 + d.zOrder});
         }
     }
     if (items.empty()) return;
@@ -396,6 +414,8 @@ void DecoratorPopup::onApply(CCObject*) {
         return;
     }
 
+    if (!m_resultColors.empty()) styles::applyColors(m_resultColors);
+
     // One undo step for the whole decoration, then select it so it's easy to tweak or delete.
     editor->addToUndoList(UndoObject::createWithArray(created, UndoCommand::Paste), false);
     editor->m_editorUI->deselectAll();
@@ -430,6 +450,7 @@ void DecoratorPopup::onSend(CCObject*) {
     }
     auto model = Mod::get()->getSettingValue<std::string>("model");
 
+    m_progressTau = 16.f;
     startWorking();
 
     auto req = web::WebRequest()
@@ -504,7 +525,7 @@ void DecoratorPopup::updateWorking(float dt) {
 
     // The API doesn't report progress, so this is an estimate that eases toward 95%
     // and only reaches 100% when the response actually arrives.
-    m_progress = std::max(m_progress, 95.f * (1.f - std::exp(-m_elapsed / 16.f)));
+    m_progress = std::max(m_progress, 95.f * (1.f - std::exp(-m_elapsed / m_progressTau)));
     m_percentLabel->setString(fmt::format("{}%", static_cast<int>(m_progress)).c_str());
     m_progressBar->setContentSize({200.f * m_progress / 100.f, 3});
 
@@ -580,10 +601,42 @@ void DecoratorPopup::onResponse(web::WebResponse res) {
     }
 
     m_result = std::move(parsed).unwrap();
+    m_resultColors.clear();
+    showResult(fmt::format("{} objects ready. Press Apply to place them, or send again to retry.", m_result.size()));
+}
+
+void DecoratorPopup::showResult(std::string const& status) {
     m_hasResult = true;
     stopWorking(true);
-
     buildPreview(true);
     for (auto b : {m_beforeBtn, m_afterBtn, m_applyBtn}) b->setVisible(true);
-    setStatus(fmt::format("{} objects ready. Press Apply to place them, or send again to retry.", m_result.size()));
+    setStatus(status);
+}
+
+void DecoratorPopup::onStyle(CCObject* sender) {
+    if (m_busy) return;
+    closePanel();
+    auto idx = static_cast<size_t>(static_cast<CCNode*>(sender)->getTag());
+
+    auto res = styles::generate(idx, m_selection);
+    if (!res) {
+        setStatus(res.unwrapErr(), true);
+        return;
+    }
+
+    // Offline styles are instant; play a short version of the working animation anyway.
+    m_progressTau = .35f;
+    startWorking();
+    auto r = std::move(res).unwrap();
+    auto name = styles::STYLES[idx].name;
+    this->runAction(CCSequence::create(
+        CCDelayTime::create(1.1f),
+        CallFuncExt::create([self = Ref<DecoratorPopup>(this), r = std::move(r), name]() mutable {
+            if (self->m_closed) return;
+            self->m_result = std::move(r.objects);
+            self->m_resultColors = std::move(r.colors);
+            self->showResult(fmt::format("{} style: {} objects. Tap the style again for a new variation.", name, self->m_result.size()));
+        }),
+        nullptr
+    ));
 }

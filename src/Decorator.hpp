@@ -10,6 +10,7 @@ struct SelectedObject {
     float x, y;
     float rotation;
     float scaleX, scaleY;
+    bool solid;
 };
 
 // One decoration object returned by the AI.
@@ -18,6 +19,7 @@ struct DecoObject {
     float x = 0, y = 0;
     float rotation = 0;
     float scale = 1;
+    float scaleX = 1, scaleY = 1;  // extra stretch on top of scale (GD 2.2 keys 128/129)
     bool flipX = false, flipY = false;
     int zLayer = 0;   // GD ZLayer value: -5,-3,-1,1,3 (B5..B1), 0 default, 5,7,9,11 (T1..T4)
     int zOrder = 0;

@@ -3,10 +3,11 @@
 Build a structure, select it, and let AI decorate it.
 
 ## How to use
-1. Open the <cy>mod settings</c> and paste your free Gemini API key (get one at aistudio.google.com/apikey, no payment needed).
+1. (Optional, only for typed prompts) paste a free Gemini API key into the <cy>mod settings</c> (aistudio.google.com/apikey).
 2. In the level editor, build your gameplay structure and **select it**.
 3. Press the <cy>AI</c> button next to the playtest buttons on the left.
-4. Describe the look you want (or tap an example) and press **Generate**.
+4. Tap a style (Neon, Lava, Ruins, Ice, Nature, Minimal) to decorate instantly and offline, or type a description and press send to use Gemini.
+5. Compare Before / After, then press **Apply**.
 
 The decoration is placed as one undo step and left selected, so you can move it, recolor it, or undo it if you don't like it.
 

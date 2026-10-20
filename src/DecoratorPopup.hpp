@@ -2,11 +2,14 @@
 
 #include <Geode/Geode.hpp>
 #include "Decorator.hpp"
+#include "StyleDecorator.hpp"
 
 class DecoratorPopup : public geode::Popup {
 protected:
     std::vector<SelectedObject> m_selection;
     std::vector<DecoObject> m_result;
+    std::vector<styles::ChannelColor> m_resultColors;
+    float m_progressTau = 16.f;  // how fast the estimated progress climbs
     bool m_hasResult = false;
     bool m_showingAfter = false;
     bool m_busy = false;
@@ -68,6 +71,8 @@ protected:
     void setStatus(std::string const& text, bool error = false);
 
     void onSend(cocos2d::CCObject*);
+    void onStyle(cocos2d::CCObject*);
+    void showResult(std::string const& status);
     void onApply(cocos2d::CCObject*);
     void onBefore(cocos2d::CCObject*);
     void onAfter(cocos2d::CCObject*);
