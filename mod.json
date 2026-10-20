@@ -8,26 +8,14 @@
 	},
 	"id": "bob0byte.ai-decorator",
 	"name": "AI Decorator",
-	"version": "v0.3.0",
+	"version": "v0.4.0",
 	"developer": "bob0byte",
-	"description": "Decorate a selected structure with one tap using offline styles, or describe a look and let AI do it.",
+	"description": "Decorate a selected structure with one tap. Works offline, no API key needed.",
 	"tags": ["editor", "enhancement"],
 	"dependencies": {
 		"geode.node-ids": ">=v1.23.3"
 	},
 	"settings": {
-		"api-key": {
-			"type": "string",
-			"name": "Gemini API Key",
-			"description": "Your free Gemini API key from <cy>aistudio.google.com/apikey</c> (no payment needed). Only needed for typed prompts; the style buttons work offline. Requests go straight from your game to Google; the key is stored only in your Geode save folder.",
-			"default": ""
-		},
-		"model": {
-			"type": "string",
-			"name": "Model",
-			"description": "Gemini model ID. Flash and Flash-Lite models are on the free tier; switch to <cy>gemini-3.5-flash-lite</c> if you hit limits.",
-			"default": "gemini-3.8-flash"
-		},
 		"max-objects": {
 			"type": "int",
 			"name": "Max Objects",
@@ -43,12 +31,6 @@
 			"default": 950,
 			"min": 1,
 			"max": 995
-		},
-		"palette": {
-			"type": "string",
-			"name": "Object Palette",
-			"description": "Optional list of object IDs the AI should prefer, as <cy>id:description</c> pairs separated by commas (e.g. <cy>1:basic block, 8:spike</c>). Leave empty to let the AI pick from the IDs it knows plus the ones in your selection.",
-			"default": ""
 		}
 	}
 }

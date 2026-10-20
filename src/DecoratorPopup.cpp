@@ -2,7 +2,6 @@
 #include "Theme.hpp"
 #include "Quotes.hpp"
 
-#include <Geode/utils/web.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/binding/EditorUI.hpp>
 #include <Geode/binding/UndoObject.hpp>
@@ -14,7 +13,7 @@ using namespace geode::prelude;
 namespace {
     constexpr float W = 440.f, H = 300.f;
     // Preview area (in main layer coordinates).
-    constexpr float PX = 16.f, PY = 98.f, PW = 408.f, PH = 156.f;
+    constexpr float PX = 16.f, PY = 62.f, PW = 408.f, PH = 192.f;
     constexpr float FONT_UP = 2.f;  // labels inside half-scaled rounded sprites are scaled up by this
 
     // Rounded rectangle. Built at 2x and scaled down so corners stay small and crisp.
@@ -98,7 +97,7 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection) {
     m_mainLayer->addChild(m_window, -10);
 
     // ---- Top bar ----
-    m_title = text("AI Decorator", .85f);
+    m_title = text("Auto Decorator", .85f);
     m_title->setAnchorPoint({0, .5f});
     m_title->setPosition({PX + 2, H - 22});
     m_mainLayer->addChild(m_title);
@@ -152,7 +151,7 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection) {
         m_buttonMenu->addChild(b, 5);
     }
 
-    // Working overlay: fades to black and cycles colors while the AI runs.
+    // Working overlay: fades to black and cycles colors while decorating.
     m_overlay = CCLayerColor::create({0, 0, 0, 0}, PW - 6, PH - 6);
     clipper->addChild(m_overlay, 10);
     m_overlayGlow = CCLayerColor::create({255, 255, 255, 0}, PW - 6, PH - 6);
@@ -174,13 +173,13 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection) {
 
     // ---- Style row (offline, no AI) ----
     {
-        constexpr float pillW = 62.f, gap = 4.f, rowY2 = 76.f;
+        constexpr float pillW = 64.f, gap = 4.f, rowY2 = 32.f;
         auto n = styles::STYLES.size();
         float startX = W / 2 - (n * pillW + (n - 1) * gap) / 2 + pillW / 2;
         for (size_t i = 0; i < n; i++) {
             CCScale9Sprite* pillBg = nullptr;
             CCLabelBMFont* pillLbl = nullptr;
-            auto pill = roundedButton(pillW, 22, styles::STYLES[i].name, .45f, this,
+            auto pill = roundedButton(pillW, 30, styles::STYLES[i].name, .5f, this,
                 menu_selector(DecoratorPopup::onStyle), &pillBg, &pillLbl);
             pillBg->setColor(mix({30, 30, 36}, styles::STYLES[i].swatch, .35f));
             pillLbl->setColor(mix({255, 255, 255}, styles::STYLES[i].swatch, .35f));
@@ -190,35 +189,6 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection) {
             m_buttonMenu->addChild(pill);
         }
     }
-
-    // ---- Input row ----
-    constexpr float rowY = 34.f, inputW = 316.f;
-    m_inputBg = rounded(inputW, 36);
-    m_inputBg->setPosition({PX + inputW / 2, rowY});
-    m_mainLayer->addChild(m_inputBg);
-
-    m_input = TextInput::create(inputW - 16, "Or describe a look for the AI...", "chatFont.fnt");
-    m_input->hideBG();
-    m_input->setTextAlign(TextInputAlign::Left);
-    m_input->setCommonFilter(CommonFilter::Any);
-    m_input->setMaxCharCount(600);
-    m_input->setPosition({PX + inputW / 2, rowY});
-    m_mainLayer->addChild(m_input);
-
-    auto expandBtn = roundedButton(36, 36, "...", .7f, this, menu_selector(DecoratorPopup::onExpand), &m_expandBg, &m_expandLabel);
-    expandBtn->setPosition({PX + inputW + 8 + 18, rowY});
-    m_buttonMenu->addChild(expandBtn);
-
-    m_sendBg = rounded(40, 36);
-    m_sendIcon = CCSprite::createWithSpriteFrameName("GJ_arrow_03_001.png");
-    m_sendIcon->setFlipX(true);
-    m_sendIcon->setScale(.55f * FONT_UP);
-    m_sendIcon->setPosition(m_sendBg->getContentSize() / 2);
-    m_sendBg->addChild(m_sendIcon);
-    m_sendBtn = CCMenuItemSpriteExtra::create(m_sendBg, this, menu_selector(DecoratorPopup::onSend));
-    m_sendBtn->m_scaleMultiplier = 1.08f;
-    m_sendBtn->setPosition({W - PX - 20, rowY});
-    m_buttonMenu->addChild(m_sendBtn);
 
     m_status = text("", .45f);
     m_status->setAnchorPoint({0, 0});
@@ -236,23 +206,17 @@ void DecoratorPopup::applyTheme() {
     m_window->setColor(t.background);
     auto border = mix(t.panel, t.text, .25f);
     setBorder(m_window, mix(t.background, t.accent, .6f));
-    for (CCNode* n : {static_cast<CCNode*>(m_previewBg), static_cast<CCNode*>(m_inputBg),
-                      static_cast<CCNode*>(m_expandBg), static_cast<CCNode*>(m_closeBg),
+    for (CCNode* n : {static_cast<CCNode*>(m_previewBg), static_cast<CCNode*>(m_closeBg),
                       static_cast<CCNode*>(m_beforeBg), static_cast<CCNode*>(m_afterBg)}) {
         setBorder(n, border);
     }
-    setBorder(m_sendBg, mix(t.accent, {255, 255, 255}, .35f));
     setBorder(m_applyBg, mix(t.accent, {255, 255, 255}, .35f));
     m_previewBg->setColor(t.panel);
-    m_inputBg->setColor(t.panel);
-    m_expandBg->setColor(t.panel);
     m_closeBg->setColor(t.panel);
-    m_sendBg->setColor(t.accent);
     m_applyBg->setColor(t.accent);
     m_title->setColor(t.text);
     m_subtitle->setColor(t.subtext);
     m_previewHint->setColor(t.subtext);
-    m_expandLabel->setColor(t.text);
     m_closeLabel->setColor(t.text);
     m_gear->setColor(t.text);
 
@@ -316,7 +280,6 @@ void DecoratorPopup::setStatus(std::string const& str, bool error) {
 void DecoratorPopup::closePanel() {
     for (auto& n : m_panelNodes) n->removeFromParent();
     m_panelNodes.clear();
-    m_input->setEnabled(!m_busy);
 }
 
 void DecoratorPopup::onDismissPanel(CCObject*) { closePanel(); }
@@ -333,43 +296,10 @@ void DecoratorPopup::addPanelClose(float x, float y) {
     m_panelNodes.push_back(btn);
 }
 
-void DecoratorPopup::onExpand(CCObject*) {
-    closePanel();
-    m_input->setEnabled(false);
-    auto const& t = currentTheme();
-
-
-    auto bg = rounded(W - 40, H - 60);
-    bg->setColor(t.panel);
-    bg->setPosition({W / 2, H / 2});
-    m_buttonMenu->addChild(bg, 51);
-    m_panelNodes.push_back(bg);
-
-    auto header = text("Your description", .6f);
-    header->setColor(t.text);
-    header->setPosition({W / 2, H - 50});
-    m_buttonMenu->addChild(header, 52);
-    m_panelNodes.push_back(header);
-
-    std::string str = m_input->getString();
-    if (str.empty()) str = "(nothing typed yet)";
-    auto body = CCLabelBMFont::create(str.c_str(), "chatFont.fnt", (W - 80) / .55f, kCCTextAlignmentLeft);
-    body->setScale(.55f);
-    body->setColor(t.subtext);
-    body->setAnchorPoint({.5f, 1});
-    body->setPosition({W / 2, H - 66});
-    if (body->getScaledContentHeight() > H - 110) body->setScale(.55f * (H - 110) / body->getScaledContentHeight());
-    m_buttonMenu->addChild(body, 52);
-    m_panelNodes.push_back(body);
-
-    addPanelClose(W / 2 + (W - 40) / 2 - 18, H / 2 + (H - 60) / 2 - 16);
-}
-
 void DecoratorPopup::onGear(CCObject* sender) {
     bool wasOpen = !m_panelNodes.empty();
     closePanel();
     if (wasOpen && sender) return;  // gear toggles the picker
-    m_input->setEnabled(false);
     auto const& t = currentTheme();
 
 
@@ -461,48 +391,11 @@ void DecoratorPopup::onClose(CCObject* sender) {
 
 // ---------------- Generation ----------------
 
-void DecoratorPopup::onSend(CCObject*) {
-    if (m_busy) return;
-    closePanel();
-
-    std::string prompt = m_input->getString();
-    if (prompt.empty()) {
-        setStatus("Type a description first.", true);
-        return;
-    }
-    auto apiKey = Mod::get()->getSettingValue<std::string>("api-key");
-    if (apiKey.empty()) {
-        setStatus("Typing needs a free Gemini key (mod settings). Tap a style above to decorate offline!", true);
-        return;
-    }
-    auto model = Mod::get()->getSettingValue<std::string>("model");
-
-    m_progressTau = 16.f;
-    startWorking();
-
-    auto req = web::WebRequest()
-        .header("x-goog-api-key", apiKey)
-        .header("content-type", "application/json")
-        .timeout(std::chrono::seconds(180))
-        .bodyJSON(decorator::buildRequest(m_selection, prompt));
-
-    // Keep the popup alive until the response lands so the callback can update it.
-    async::spawn(
-        req.post(fmt::format("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", model)),
-        [self = Ref<DecoratorPopup>(this)](web::WebResponse res) {
-            if (!self->m_closed) self->onResponse(std::move(res));
-        }
-    );
-}
-
 void DecoratorPopup::startWorking() {
     m_busy = true;
     m_elapsed = 0.f;
     m_quoteTimer = 0.f;
     m_progress = 0.f;
-    m_input->setEnabled(false);
-    m_sendBtn->setEnabled(false);
-    m_sendBg->setOpacity(140);
     setStatus("");
     for (auto b : {m_beforeBtn, m_afterBtn, m_applyBtn}) b->setVisible(false);
 
@@ -550,8 +443,6 @@ void DecoratorPopup::updateWorking(float dt) {
     if (!m_busy) return;
     m_elapsed += dt;
 
-    // The API doesn't report progress, so this is an estimate that eases toward 95%
-    // and only reaches 100% when the response actually arrives.
     m_progress = std::max(m_progress, 95.f * (1.f - std::exp(-m_elapsed / m_progressTau)));
     m_percentLabel->setString(fmt::format("{}%", static_cast<int>(m_progress)).c_str());
     m_progressBar->setContentSize({200.f * m_progress / 100.f, 3});
@@ -574,9 +465,6 @@ void DecoratorPopup::updateWorking(float dt) {
 
 void DecoratorPopup::stopWorking(bool success) {
     m_busy = false;
-    m_input->setEnabled(true);
-    m_sendBtn->setEnabled(true);
-    m_sendBg->setOpacity(255);
 
     if (success) {
         m_percentLabel->setString("100%");
@@ -602,34 +490,6 @@ void DecoratorPopup::stopWorking(bool success) {
     } else {
         hide();
     }
-}
-
-void DecoratorPopup::onResponse(web::WebResponse res) {
-    if (res.code() == 429) {
-        stopWorking(false);
-        setStatus("Free-tier limit reached. Wait a bit and try again.", true);
-        return;
-    }
-
-    auto json = res.json();
-    if (!json) {
-        stopWorking(false);
-        setStatus(fmt::format("Request failed (HTTP {}).", res.code()), true);
-        log::error("AI Decorator: bad response ({}): {}", res.code(), res.string().unwrapOr(""));
-        return;
-    }
-
-    auto parsed = decorator::parseResponse(json.unwrap());
-    if (!parsed) {
-        stopWorking(false);
-        setStatus(parsed.unwrapErr(), true);
-        log::error("AI Decorator: {}", parsed.unwrapErr());
-        return;
-    }
-
-    m_result = std::move(parsed).unwrap();
-    m_resultColors.clear();
-    showResult(fmt::format("{} objects ready. Press Apply to place them, or send again to retry.", m_result.size()));
 }
 
 void DecoratorPopup::showResult(std::string const& status) {

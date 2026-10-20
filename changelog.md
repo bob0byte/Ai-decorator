@@ -1,3 +1,7 @@
+# v0.4.0
+- Fully offline: removed Gemini/API key options.
+- Round AI button, style buttons moved to the bottom.
+
 # v0.3.0
 - Offline style decorator: Neon, Lava, Ruins, Ice, Nature, Minimal. No AI or internet needed.
 - New themed UI with preview, before/after and theme picker.

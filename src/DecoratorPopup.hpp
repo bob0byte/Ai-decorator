@@ -71,13 +71,11 @@ protected:
     void buildPreview(bool after);
     void setStatus(std::string const& text, bool error = false);
 
-    void onSend(cocos2d::CCObject*);
     void onStyle(cocos2d::CCObject*);
     void showResult(std::string const& status);
     void onApply(cocos2d::CCObject*);
     void onBefore(cocos2d::CCObject*);
     void onAfter(cocos2d::CCObject*);
-    void onExpand(cocos2d::CCObject*);
     void onGear(cocos2d::CCObject*);
     void onPickTheme(cocos2d::CCObject*);
     void onDismissPanel(cocos2d::CCObject*);
@@ -85,7 +83,6 @@ protected:
     void startWorking();
     void stopWorking(bool success);
     void updateWorking(float dt);
-    void onResponse(geode::utils::web::WebResponse res);
 
 public:
     static DecoratorPopup* create(std::vector<SelectedObject> selection);
