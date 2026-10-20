@@ -18,11 +18,27 @@ namespace {
     constexpr float FONT_UP = 2.f;  // labels inside half-scaled rounded sprites are scaled up by this
 
     // Rounded rectangle. Built at 2x and scaled down so corners stay small and crisp.
-    CCScale9Sprite* rounded(float w, float h) {
+    constexpr int BORDER_TAG = 7301;
+
+    // Rounded rectangle with a border. Built at 2x and scaled down so corners stay small and crisp.
+    // The border is a slightly bigger copy drawn behind (negative z).
+    CCScale9Sprite* rounded(float w, float h, float border = 1.5f) {
         auto spr = CCScale9Sprite::create("square02b_001.png", {0, 0, 80, 80});
         spr->setContentSize({w * 2, h * 2});
         spr->setScale(.5f);
+        if (border > 0) {
+            auto b = CCScale9Sprite::create("square02b_001.png", {0, 0, 80, 80});
+            b->setContentSize({w * 2 + border * 4, h * 2 + border * 4});
+            b->setPosition({w, h});
+            b->setColor({90, 90, 110});
+            b->setTag(BORDER_TAG);
+            spr->addChild(b, -1);
+        }
         return spr;
+    }
+
+    void setBorder(CCNode* spr, ccColor3B c) {
+        if (auto b = static_cast<CCScale9Sprite*>(spr->getChildByTag(BORDER_TAG))) b->setColor(c);
     }
 
     CCLabelBMFont* text(char const* str, float scale) {
@@ -77,7 +93,7 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection) {
     m_closeBtn->setVisible(false);
     m_closeBtn->setEnabled(false);
 
-    m_window = rounded(W, H);
+    m_window = rounded(W, H, 2.5f);
     m_window->setPosition({W / 2, H / 2});
     m_mainLayer->addChild(m_window, -10);
 
@@ -168,6 +184,7 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection) {
                 menu_selector(DecoratorPopup::onStyle), &pillBg, &pillLbl);
             pillBg->setColor(mix({30, 30, 36}, styles::STYLES[i].swatch, .35f));
             pillLbl->setColor(mix({255, 255, 255}, styles::STYLES[i].swatch, .35f));
+            setBorder(pillBg, styles::STYLES[i].swatch);
             pill->setTag(static_cast<int>(i));
             pill->setPosition({startX + i * (pillW + gap), rowY2});
             m_buttonMenu->addChild(pill);
@@ -217,6 +234,15 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection) {
 void DecoratorPopup::applyTheme() {
     auto const& t = currentTheme();
     m_window->setColor(t.background);
+    auto border = mix(t.panel, t.text, .25f);
+    setBorder(m_window, mix(t.background, t.accent, .6f));
+    for (CCNode* n : {static_cast<CCNode*>(m_previewBg), static_cast<CCNode*>(m_inputBg),
+                      static_cast<CCNode*>(m_expandBg), static_cast<CCNode*>(m_closeBg),
+                      static_cast<CCNode*>(m_beforeBg), static_cast<CCNode*>(m_afterBg)}) {
+        setBorder(n, border);
+    }
+    setBorder(m_sendBg, mix(t.accent, {255, 255, 255}, .35f));
+    setBorder(m_applyBg, mix(t.accent, {255, 255, 255}, .35f));
     m_previewBg->setColor(t.panel);
     m_inputBg->setColor(t.panel);
     m_expandBg->setColor(t.panel);
@@ -370,14 +396,14 @@ void DecoratorPopup::onGear(CCObject*) {
         lbl->setPositionY(lbl->getPositionY() + 10);
 
         // Accent stripe so each theme is recognizable at a glance.
-        auto stripe = rounded(56, 6);
+        auto stripe = rounded(56, 6, 0);
         stripe->setColor(th.accent);
         stripe->setScale(1.f);  // parent is already half scale
         stripe->setPosition({swatchBg->getContentSize().width / 2, 18});
         swatchBg->addChild(stripe);
 
         if (i == currentThemeIndex()) {
-            auto ring = rounded(90, 46);
+            auto ring = rounded(90, 46, 0);
             ring->setColor(t.accent);
             ring->setPosition({W / 2 - 92 + (i % 3) * 92.f, H / 2 + 14 - (i / 3) * 52.f});
             m_buttonMenu->addChild(ring, 52);
@@ -445,7 +471,7 @@ void DecoratorPopup::onSend(CCObject*) {
     }
     auto apiKey = Mod::get()->getSettingValue<std::string>("api-key");
     if (apiKey.empty()) {
-        setStatus("Add your free Gemini API key in the mod settings first.", true);
+        setStatus("Typing needs a free Gemini key (mod settings). Tap a style above to decorate offline!", true);
         return;
     }
     auto model = Mod::get()->getSettingValue<std::string>("model");

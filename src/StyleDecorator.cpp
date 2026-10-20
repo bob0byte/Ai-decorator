@@ -27,7 +27,9 @@ namespace {
 
     struct Library {
         std::vector<LibObject> deco;
-        int square = 0;               // ~30x30 plain decoration square, used for outlines/fills
+        int square = 0;               // plain decoration square, used for outlines/fills
+        float squareScale = 1.f;      // scale that makes the square one block (30 units) wide
+        size_t scanned = 0;
         std::vector<int> glows;       // edge glow pieces
     };
 
@@ -47,30 +49,36 @@ namespace {
             auto toolbox = ObjectToolbox::sharedState();
             for (int id = 1; id <= 4600; id++) {
                 auto frameC = toolbox->intKeyToFrame(id);
-                if (!frameC || !*frameC) continue;
                 auto obj = GameObject::createWithKey(id);
                 if (!obj) continue;
-                if (obj->m_objectType != GameObjectType::Decoration) continue;
+                l.scanned++;
+                bool deco = obj->m_objectType == GameObjectType::Decoration || obj->m_isDecoration;
+                if (!deco) continue;
                 auto size = obj->getContentSize();
-                l.deco.push_back({id, lower(frameC), size.width, size.height});
+                if (size.width < 1 || size.height < 1) continue;
+                l.deco.push_back({id, lower(frameC ? frameC : ""), size.width, size.height});
             }
 
             // A plain square: decoration, ~30x30, frame name looks like a block/square.
+            // Square-shaped decoration; size units vary by platform/texture quality, so match on shape.
             auto isSquare = [](LibObject const& o) {
-                return std::abs(o.w - 30) < 2.5f && std::abs(o.h - 30) < 2.5f;
+                return o.w >= 8 && std::abs(o.w - o.h) / o.w < .08f;
             };
+            auto pick = [&](LibObject const& o) { l.square = o.id; l.squareScale = 30.f / o.w; };
             for (auto const& o : l.deco) {
-                if (isSquare(o) && hasAny(o.frame, {"square", "block"}) && !hasAny(o.frame, {"glow", "outline"})) {
-                    l.square = o.id; break;
+                if (isSquare(o) && hasAny(o.frame, {"square", "block"}) && !hasAny(o.frame, {"glow", "outline", "spike"})) {
+                    pick(o); break;
                 }
             }
             if (!l.square) {
-                for (auto const& o : l.deco) if (isSquare(o)) { l.square = o.id; break; }
+                for (auto const& o : l.deco) {
+                    if (isSquare(o) && !hasAny(o.frame, {"glow", "spike", "saw"})) { pick(o); break; }
+                }
             }
 
             // Glow pieces about one block wide.
             for (auto const& o : l.deco) {
-                if (o.frame.find("glow") != std::string::npos && o.w > 20 && o.w < 40 && o.h <= 30) {
+                if (o.frame.find("glow") != std::string::npos && o.h <= o.w) {
                     l.glows.push_back(o.id);
                 }
             }
@@ -133,7 +141,11 @@ namespace {
 
 Result<styles::Result> styles::generate(size_t styleIndex, std::vector<SelectedObject> const& selection) {
     auto const& lib = library();
-    if (!lib.square) return Err("Couldn't find a usable decoration square in this game version.");
+    if (!lib.square) {
+        return Err(fmt::format("No usable deco square found (scanned {}, deco {}). Send this to the dev!",
+            lib.scanned, lib.deco.size()));
+    }
+    float sq = lib.squareScale;
 
     auto mod = Mod::get();
     auto maxObjects = static_cast<size_t>(mod->getSettingValue<int64_t>("max-objects"));
@@ -170,7 +182,7 @@ Result<styles::Result> styles::generate(size_t styleIndex, std::vector<SelectedO
         // Flat fill over each block.
         if (s.fillOverlay) {
             DecoObject f;
-            f.id = lib.square; f.x = cx(x); f.y = cx(y);
+            f.id = lib.square; f.x = cx(x); f.y = cx(y); f.scale = sq;
             f.zLayer = 3; f.zOrder = -5; f.mainColor = chFill; f.detailColor = chFill;
             add(f);
         }
@@ -183,6 +195,7 @@ Result<styles::Result> styles::generate(size_t styleIndex, std::vector<SelectedO
             l.id = lib.square;
             l.x = cx(x) + e.dx * (15.f - 15.f * thick);
             l.y = cx(y) + e.dy * (15.f - 15.f * thick);
+            l.scale = sq;
             l.scaleX = e.dy != 0 ? 1.f : thick;
             l.scaleY = e.dy != 0 ? thick : 1.f;
             l.zLayer = 5; l.zOrder = 2; l.mainColor = chOutline; l.detailColor = chOutline;
@@ -226,7 +239,7 @@ Result<styles::Result> styles::generate(size_t styleIndex, std::vector<SelectedO
                 DecoObject b;
                 b.id = lib.square;
                 b.x = cx(x); b.y = cx(y);
-                b.scale = rnd(.6f, 2.2f);
+                b.scale = sq * rnd(.6f, 2.2f);
                 b.rotation = styleIndex == 2 ? rnd(-8, 8) : 0.f;  // ruins look a bit crooked
                 b.zLayer = -3; b.zOrder = -10; b.mainColor = chBackdrop; b.detailColor = chBackdrop;
                 add(b);
