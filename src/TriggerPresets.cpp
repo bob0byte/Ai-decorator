@@ -23,7 +23,8 @@ Result<int> triggers::add(size_t preset, CCArray* selection, int group) {
 
     // Put the selection in its own group (once per popup).
     if (group <= 0) {
-        group = editor->getNextFreeGroupID({});
+        gd::unordered_set<int> exclude;
+        group = editor->getNextFreeGroupID(exclude);
         for (auto obj : CCArrayExt<GameObject*>(selection)) {
             if (obj->addToGroup(group) == 1) editor->addToGroup(obj, group, false);
         }

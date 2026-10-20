@@ -88,7 +88,7 @@ namespace {
                 d.error = "Style data is corrupted: " + parsed.unwrapErr().message;
                 return d;
             }
-            auto root = parsed.unwrap();
+            auto const root = parsed.unwrap();
             for (auto const& s : root["styles"].asArray().unwrapOr(std::vector<matjson::Value>{})) d.groups.push_back(parseStyle(s));
             for (auto const& s : root["levels"].asArray().unwrapOr(std::vector<matjson::Value>{})) d.levels.push_back(parseStyle(s));
             for (auto const& [cat, ids] : root["cats"]) {
