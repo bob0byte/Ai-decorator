@@ -9,12 +9,18 @@ class $modify(AIDecoratorEditorUI, EditorUI) {
     bool init(LevelEditorLayer* editorLayer) {
         if (!EditorUI::init(editorLayer)) return false;
 
-        // Square "AI" button, same size as the round editor buttons.
-        auto bg = CCScale9Sprite::create("GJ_button_04.png");
-        bg->setContentSize({40.f, 40.f});
+        // Round "AI" button, drawn so it doesn't depend on any game sprite.
+        constexpr float R = 20.f;
+        auto bg = CCNode::create();
+        bg->setContentSize({R * 2, R * 2});
+        auto draw = CCDrawNode::create();
+        draw->drawDot({R, R}, R, {0.85f, 0.88f, 0.95f, 1.f});          // border ring
+        draw->drawDot({R, R}, R - 2.5f, {0.13f, 0.14f, 0.20f, 1.f});   // fill
+        bg->addChild(draw);
         auto label = CCLabelBMFont::create("AI", "bigFont.fnt");
-        label->setScale(.6f);
-        bg->addChildAtPosition(label, Anchor::Center, ccp(0, 1));
+        label->setScale(.55f);
+        label->setPosition({R, R + 1});
+        bg->addChild(label);
 
         auto btn = CCMenuItemSpriteExtra::create(
             bg, this, menu_selector(AIDecoratorEditorUI::onAIDecorate)
