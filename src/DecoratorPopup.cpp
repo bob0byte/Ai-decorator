@@ -1,5 +1,7 @@
 #include "DecoratorPopup.hpp"
 
+#include <array>
+
 #include <Geode/utils/web.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
