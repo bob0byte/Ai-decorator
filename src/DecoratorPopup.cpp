@@ -321,17 +321,23 @@ void DecoratorPopup::closePanel() {
 
 void DecoratorPopup::onDismissPanel(CCObject*) { closePanel(); }
 
+void DecoratorPopup::addPanelClose(float x, float y) {
+    auto const& t = currentTheme();
+    CCScale9Sprite* bg = nullptr;
+    CCLabelBMFont* lbl = nullptr;
+    auto btn = roundedButton(22, 22, "X", .55f, this, menu_selector(DecoratorPopup::onDismissPanel), &bg, &lbl);
+    bg->setColor(t.background);
+    lbl->setColor(t.text);
+    btn->setPosition({x, y});
+    m_buttonMenu->addChild(btn, 60);
+    m_panelNodes.push_back(btn);
+}
+
 void DecoratorPopup::onExpand(CCObject*) {
     closePanel();
     m_input->setEnabled(false);
     auto const& t = currentTheme();
 
-    // Full-window catcher so tapping anywhere closes the panel.
-    auto catcher = CCMenuItem::create(this, menu_selector(DecoratorPopup::onDismissPanel));
-    catcher->setContentSize({W, H});
-    catcher->setPosition({W / 2, H / 2});
-    m_buttonMenu->addChild(catcher, 50);
-    m_panelNodes.push_back(catcher);
 
     auto bg = rounded(W - 40, H - 60);
     bg->setColor(t.panel);
@@ -356,29 +362,24 @@ void DecoratorPopup::onExpand(CCObject*) {
     m_buttonMenu->addChild(body, 52);
     m_panelNodes.push_back(body);
 
-    auto hint = text("Tap anywhere to close", .4f);
-    hint->setColor(t.subtext);
-    hint->setPosition({W / 2, 44});
-    m_buttonMenu->addChild(hint, 52);
-    m_panelNodes.push_back(hint);
+    addPanelClose(W / 2 + (W - 40) / 2 - 18, H / 2 + (H - 60) / 2 - 16);
 }
 
-void DecoratorPopup::onGear(CCObject*) {
+void DecoratorPopup::onGear(CCObject* sender) {
+    bool wasOpen = !m_panelNodes.empty();
     closePanel();
+    if (wasOpen && sender) return;  // gear toggles the picker
     m_input->setEnabled(false);
     auto const& t = currentTheme();
 
-    auto catcher = CCMenuItem::create(this, menu_selector(DecoratorPopup::onDismissPanel));
-    catcher->setContentSize({W, H});
-    catcher->setPosition({W / 2, H / 2});
-    m_buttonMenu->addChild(catcher, 50);
-    m_panelNodes.push_back(catcher);
 
     auto bg = rounded(300, 150);
     bg->setColor(t.panel);
     bg->setPosition({W / 2, H / 2});
     m_buttonMenu->addChild(bg, 51);
     m_panelNodes.push_back(bg);
+
+    addPanelClose(W / 2 + 150 - 18, H / 2 + 75 - 16);
 
     auto header = text("Theme", .7f);
     header->setColor(t.text);

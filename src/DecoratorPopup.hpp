@@ -62,6 +62,7 @@ protected:
     // Nodes of the currently open overlay panel (expand / theme picker).
     std::vector<geode::Ref<cocos2d::CCNode>> m_panelNodes;
     void closePanel();
+    void addPanelClose(float x, float y);
 
     bool init(std::vector<SelectedObject> selection);
     void onClose(cocos2d::CCObject*) override;
