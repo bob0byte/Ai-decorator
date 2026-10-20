@@ -1,6 +1,5 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/EditorUI.hpp>
-#include <Geode/binding/ButtonSprite.hpp>
 
 #include "DecoratorPopup.hpp"
 
@@ -10,20 +9,34 @@ class $modify(AIDecoratorEditorUI, EditorUI) {
     bool init(LevelEditorLayer* editorLayer) {
         if (!EditorUI::init(editorLayer)) return false;
 
-        auto menu = this->getChildByID("editor-buttons-menu");
-        if (!menu) {
-            log::warn("AI Decorator: editor-buttons-menu not found, button not added");
-            return true;
-        }
+        // Square "AI" button, same size as the round editor buttons.
+        auto bg = CCScale9Sprite::create("GJ_button_04.png");
+        bg->setContentSize({40.f, 40.f});
+        auto label = CCLabelBMFont::create("AI", "bigFont.fnt");
+        label->setScale(.6f);
+        bg->addChildAtPosition(label, Anchor::Center, ccp(0, 1));
 
-        auto spr = ButtonSprite::create("AI", 20, true, "bigFont.fnt", "GJ_button_04.png", 30.f, .6f);
-        spr->setScale(.85f);
         auto btn = CCMenuItemSpriteExtra::create(
-            spr, this, menu_selector(AIDecoratorEditorUI::onAIDecorate)
+            bg, this, menu_selector(AIDecoratorEditorUI::onAIDecorate)
         );
         btn->setID("ai-decorate-button"_spr);
+
+        // Own menu, placed just right of the music playtest button.
+        auto menu = CCMenu::create();
+        menu->setID("ai-decorator-menu"_spr);
+        menu->setContentSize({0, 0});
         menu->addChild(btn);
-        menu->updateLayout();
+        this->addChild(menu);
+
+        auto winSize = CCDirector::get()->getWinSize();
+        CCPoint pos = ccp(95.f, winSize.height / 2 + 75.f);  // fallback
+        if (auto playback = this->getChildByID("playback-menu")) {
+            if (auto music = playback->getChildByID("music-playback-button")) {
+                auto world = playback->convertToWorldSpace(music->getPosition());
+                pos = ccp(world.x + music->getScaledContentWidth() / 2 + 32.f, world.y);
+            }
+        }
+        menu->setPosition(pos);
 
         return true;
     }

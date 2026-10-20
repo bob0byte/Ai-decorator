@@ -4,7 +4,7 @@ A [Geode](https://geode-sdk.org) mod for Geometry Dash 2.2081. Build a structure
 
 ## How it works
 
-1. `src/main.cpp` hooks `EditorUI::init` and adds an **AI** button to the editor's button menu (`editor-buttons-menu`).
+1. `src/main.cpp` hooks `EditorUI::init` and adds a square **AI** button next to the music playtest button.
 2. Pressing it reads the current selection (object IDs, positions, rotation, scale) and opens `DecoratorPopup`.
 3. The popup sends the selection plus your description to the Gemini generateContent API (`src/Decorator.cpp` builds the prompt).
 4. Gemini answers with a JSON list of objects (`id`, `x`, `y`, `rotation`, `scale`, flips, z layer/order, color channels).
