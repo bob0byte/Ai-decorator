@@ -58,6 +58,9 @@ jobs:
           out="${{ steps.build.outputs.build-output }}"
           f=$(find "$out" -name '*.geode' | head -1)
           cp "$f" "ai-decorator-${{ matrix.config.name }}.geode"
+          gh release view latest -R ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create latest -R ${{ github.repository }} --target main --title "Latest build" \
+              --notes "Updated on every push to main. Download the file for your platform, rename it to bob0byte.ai-decorator.geode and put it in your Geode mods folder." || true
           gh release upload latest "ai-decorator-${{ matrix.config.name }}.geode" --clobber -R ${{ github.repository }}
 
       # Re-run the build on failure and surface compiler errors as annotations,
