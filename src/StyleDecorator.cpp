@@ -426,6 +426,8 @@ std::string styles::hitboxClass(SelectedObject const& o) {
         auto it = cats.find(o.id);
         // Solid type is also the default for plain decoration, so only trust it with a real hitbox.
         if (it == cats.end() && (o.hbW < 1 || o.hbH < 1)) return "";
+        // Every gameplay object up to 2.1 (id 1911) is in the learned table, so older ids missing from it are decoration.
+        if (it == cats.end() && o.id <= 1911) return "";
         if (it != cats.end() && it->second != "block" && it->second != "platform") return it->second;
         float mn = std::min(o.hbW, o.hbH), mx = std::max(o.hbW, o.hbH);
         if (mx > 0 && mn < mx * .6f) return "platform";
