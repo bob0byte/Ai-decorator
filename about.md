@@ -1,11 +1,13 @@
 # AI Decorator
 
-Decorate a structure with one tap. Works offline, no API key needed.
+Decorate a structure using what 139 real levels do, and add trigger effects. Works offline.
 
 ## How to use
-1. In the level editor, build your gameplay structure and **select it**.
+1. Build your structure in the editor and **select it**.
 2. Press the round <cy>AI</c> button next to the playtest buttons.
-3. Tap a style: Neon, Lava, Ruins, Ice, Nature or Minimal.
-4. Compare **Before / After**, then press **Apply**. Tap the style again for a new variation.
+3. Either type a description (e.g. "dark red glow with chains", "icy 3d", "like Acheron") and press **Go** - this mixes the decorations of all levels, weighted by your words -
+   or browse a style (Groups / Levels) and press **Use**. **?** picks a random style.
+4. Compare **Before / After**, then press **Apply**.
 
-Styles use 5 color channels (default 950-954, changeable in settings). The decoration is one undo step.
+Decoration is placed around hitboxes: blocks, thin platforms, slopes, spikes, ground spikes and saws each get what real levels put on them.
+The **Triggers** tab adds Pulse, Fade, Move, Spin, Pop, Shake and Hide triggers for the selection.

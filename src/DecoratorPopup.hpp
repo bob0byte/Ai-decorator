@@ -59,6 +59,14 @@ protected:
     CCMenuItemSpriteExtra* m_beforeBtn = nullptr;
     CCMenuItemSpriteExtra* m_afterBtn = nullptr;
 
+    // Description box (merges all levels' decorations).
+    geode::TextInput* m_input = nullptr;
+    cocos2d::extension::CCScale9Sprite* m_inputBg = nullptr;
+    cocos2d::extension::CCScale9Sprite* m_sendBg = nullptr;
+    cocos2d::extension::CCScale9Sprite* m_diceBg = nullptr;
+    cocos2d::CCLabelBMFont* m_diceLabel = nullptr;
+    cocos2d::CCMenu* m_inputRow = nullptr;
+
     // Decorate tab bottom row, and the triggers tab grid.
     cocos2d::CCMenu* m_decorateRow = nullptr;
     cocos2d::CCNode* m_decorateRowLabels = nullptr;
@@ -93,6 +101,9 @@ protected:
     void setTab(bool triggers);
 
     void onDecorate(cocos2d::CCObject*);
+    void onSend(cocos2d::CCObject*);
+    void onDice(cocos2d::CCObject*);
+    void runGeneration(geode::Result<styles::Result> res, std::string const& label);
     void onPrevStyle(cocos2d::CCObject*);
     void onNextStyle(cocos2d::CCObject*);
     void onToggleMode(cocos2d::CCObject*);

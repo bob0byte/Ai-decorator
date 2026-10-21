@@ -1,3 +1,12 @@
+# v0.6.0
+- Description box is back: it mixes every level's decorations, weighted by your words (colors, glow, chains, 3d, level names...).
+- Decoration is sorted by hitbox (block, platform, slope, spike, ground spike, saw...) instead of object ID.
+- Fixed "no rules for the objects you selected".
+- Random style button, hitbox summary in the header, remembers your last description and style.
+
+# v0.5.0
+- Styles learned from 139 levels, Triggers tab.
+
 # v0.4.0
 - Fully offline: removed Gemini/API key options.
 - Round AI button, style buttons moved to the bottom.

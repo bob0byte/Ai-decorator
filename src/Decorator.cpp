@@ -30,6 +30,8 @@ std::vector<SelectedObject> decorator::collectSelection(EditorUI* ui) {
             obj->m_objectType == GameObjectType::Solid,
             obj->m_isFlipX, obj->m_isFlipY,
             static_cast<int>(obj->m_objectType),
+            obj->getObjectRect().size.width, obj->getObjectRect().size.height,
+            obj->m_objectRadius,
         });
     }
     return out;

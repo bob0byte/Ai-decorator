@@ -9,13 +9,14 @@
 #include <Geode/binding/GameObject.hpp>
 #include <cmath>
 #include <map>
+#include <algorithm>
 
 using namespace geode::prelude;
 
 namespace {
     constexpr float W = 440.f, H = 300.f;
     // Preview area (in main layer coordinates).
-    constexpr float PX = 16.f, PY = 62.f, PW = 408.f, PH = 192.f;
+    constexpr float PX = 16.f, PY = 102.f, PW = 408.f, PH = 152.f;
     constexpr float FONT_UP = 2.f;  // labels inside half-scaled rounded sprites are scaled up by this
     constexpr int BORDER_TAG = 7301;
 
@@ -112,9 +113,22 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection, CCArray* nodes)
     m_title->setPosition({PX + 2, H - 22});
     m_mainLayer->addChild(m_title);
 
-    m_subtitle = text(fmt::format("{} selected", m_selection.size()).c_str(), .45f);
+    {
+        std::map<std::string, int> counts;
+        for (auto const& o : m_selection) {
+            auto c = styles::hitboxClass(o);
+            counts[c.empty() ? std::string("deco") : c]++;
+        }
+        std::string sub;
+        for (auto const& [c, n] : counts) {
+            auto nice = c; std::replace(nice.begin(), nice.end(), '_', ' ');
+            sub += fmt::format("{}{} {}", sub.empty() ? "" : ", ", n, nice);
+        }
+        m_subtitle = text(sub.c_str(), .4f);
+    }
     m_subtitle->setAnchorPoint({0, .5f});
     m_subtitle->setPosition({PX + 4 + m_title->getScaledContentWidth() + 6, H - 23});
+    m_subtitle->limitLabelWidth(W / 2 + 4 - (PX + 4 + m_title->getScaledContentWidth() + 6), .4f, .2f);
     m_mainLayer->addChild(m_subtitle);
 
     // Tabs
@@ -189,7 +203,7 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection, CCArray* nodes)
     }
 
     // ---- Decorate tab: style browser row ----
-    constexpr float rowY = 32.f;
+    constexpr float rowY = 78.f;
     m_decorateRow = CCMenu::create();
     m_decorateRow->setPosition({0, 0});
     m_decorateRow->setContentSize({W, 60});
@@ -206,10 +220,10 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection, CCArray* nodes)
     m_decorateRow->addChild(prevBtn);
 
     auto nextBtn = roundedButton(26, 34, ">", .7f, this, menu_selector(DecoratorPopup::onNextStyle), &m_nextBg, &m_nextLabel);
-    nextBtn->setPosition({W - PX - 92 - 6 - 13, rowY});
+    nextBtn->setPosition({W - PX - 58 - 4 - 28 - 6 - 13, rowY});
     m_decorateRow->addChild(nextBtn);
 
-    float nameLeft = PX + 64 + 6 + 26 + 8, nameRight = W - PX - 92 - 6 - 26 - 8;
+    float nameLeft = PX + 64 + 6 + 26 + 8;
     m_swatch = CCDrawNode::create();
     m_swatch->setPosition({nameLeft + 6, rowY});
     m_decorateRowLabels->addChild(m_swatch);
@@ -222,27 +236,56 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection, CCArray* nodes)
     m_styleDesc->setPosition({nameLeft + 16, rowY - 8});
     m_decorateRowLabels->addChild(m_styleDesc);
 
-    auto decoBtn = roundedButton(92, 34, "Decorate", .55f, this, menu_selector(DecoratorPopup::onDecorate), &m_decorateBg);
-    decoBtn->setPosition({W - PX - 46, rowY});
+    auto decoBtn = roundedButton(58, 34, "Use", .55f, this, menu_selector(DecoratorPopup::onDecorate), &m_decorateBg);
+    decoBtn->setPosition({W - PX - 29, rowY});
     m_decorateRow->addChild(decoBtn);
+    auto diceBtn = roundedButton(28, 34, "?", .7f, this, menu_selector(DecoratorPopup::onDice), &m_diceBg, &m_diceLabel);
+    diceBtn->setPosition({W - PX - 58 - 4 - 14, rowY});
+    m_decorateRow->addChild(diceBtn);
+
+    // ---- Description row: merges every level's decorations, weighted by the words ----
+    constexpr float inY = 32.f;
+    m_inputRow = CCMenu::create();
+    m_inputRow->setPosition({0, 0});
+    m_mainLayer->addChild(m_inputRow, 3);
+    float inW = W - 2 * PX - 52 - 6;
+    m_inputBg = rounded(inW, 36);
+    m_inputBg->setPosition({PX + inW / 2, inY});
+    m_mainLayer->addChild(m_inputBg, 2);
+    m_input = TextInput::create(inW - 16, "Describe it: dark red glow with chains, icy 3d, like Acheron...", "chatFont.fnt");
+    m_input->hideBG();
+    m_input->setTextAlign(TextInputAlign::Left);
+    m_input->setCommonFilter(CommonFilter::Any);
+    m_input->setMaxCharCount(200);
+    m_input->setPosition({PX + inW / 2, inY});
+    m_input->setString(Mod::get()->getSavedValue<std::string>("last-prompt", ""));
+    m_mainLayer->addChild(m_input, 3);
+    m_sendBg = rounded(52, 36);
+    auto sendLbl = text("Go", .6f * FONT_UP);
+    sendLbl->setPosition(m_sendBg->getContentSize() / 2);
+    m_sendBg->addChild(sendLbl);
+    auto sendBtn = CCMenuItemSpriteExtra::create(m_sendBg, this, menu_selector(DecoratorPopup::onSend));
+    sendBtn->m_scaleMultiplier = 1.08f;
+    sendBtn->setPosition({W - PX - 26, inY});
+    m_inputRow->addChild(sendBtn);
 
     // ---- Triggers tab: 3x3 grid of presets over the preview area ----
     m_triggerGrid = CCMenu::create();
     m_triggerGrid->setPosition({0, 0});
     m_mainLayer->addChild(m_triggerGrid, 6);
     {
-        constexpr float cw = 128.f, ch = 52.f, gap = 8.f;
+        constexpr float cw = 128.f, ch = 44.f, gap = 5.f;
         float x0 = PX + (PW - (3 * cw + 2 * gap)) / 2 + cw / 2;
-        float y0 = PY + PH - 12 - ch / 2;
+        float y0 = PY + PH + 8 - ch / 2;
         for (size_t i = 0; i < triggers::PRESETS.size(); i++) {
             auto const& p = triggers::PRESETS[i];
             CCScale9Sprite* bg = nullptr;
             CCLabelBMFont* lbl = nullptr;
             auto btn = roundedButton(cw, ch, p.name, .55f, this, menu_selector(DecoratorPopup::onTrigger), &bg, &lbl);
-            lbl->setPositionY(lbl->getPositionY() + 16);
+            lbl->setPositionY(lbl->getPositionY() + 14);
             auto info = CCLabelBMFont::create(p.info, "chatFont.fnt", (cw - 10) * 2 / (.38f * FONT_UP), kCCTextAlignmentCenter);
             info->setScale(.38f * FONT_UP);
-            info->setPosition({bg->getContentSize().width / 2, bg->getContentSize().height / 2 - 16});
+            info->setPosition({bg->getContentSize().width / 2, bg->getContentSize().height / 2 - 14});
             bg->addChild(info);
             btn->setTag(static_cast<int>(i));
             btn->setPosition({x0 + (i % 3) * (cw + gap), y0 - (i / 3) * (ch + gap)});
@@ -278,6 +321,10 @@ void DecoratorPopup::applyTheme() {
     }
     setBorder(m_applyBg, mix(t.accent, {255, 255, 255}, .35f));
     setBorder(m_decorateBg, mix(t.accent, {255, 255, 255}, .35f));
+    setBorder(m_sendBg, mix(t.accent, {255, 255, 255}, .35f));
+    m_sendBg->setColor(t.accent);
+    m_inputBg->setColor(t.panel); setBorder(m_inputBg, border);
+    m_diceBg->setColor(t.panel); setBorder(m_diceBg, border); m_diceLabel->setColor(t.text);
     m_previewBg->setColor(t.panel);
     m_closeBg->setColor(t.panel);
     m_modeBg->setColor(t.panel);
@@ -319,6 +366,10 @@ void DecoratorPopup::setTab(bool trig) {
     m_decorateRow->setVisible(!trig);
     m_decorateRow->setEnabled(!trig);
     m_decorateRowLabels->setVisible(!trig);
+    m_inputRow->setVisible(!trig);
+    m_inputRow->setEnabled(!trig);
+    m_input->setVisible(!trig);
+    m_inputBg->setVisible(!trig);
     m_previewContent->setVisible(!trig);
     m_previewHint->setVisible(!trig);
     for (auto b : {m_beforeBtn, m_afterBtn, m_applyBtn}) b->setVisible(!trig && m_hasResult);
@@ -334,9 +385,9 @@ void DecoratorPopup::refreshStyle() {
     m_modeLabel->setString(m_style.level ? "Levels" : "Groups");
     auto total = m_style.level ? styles::levelCount() : styles::groupCount();
     m_styleName->setString(styles::name(m_style).c_str());
-    m_styleName->limitLabelWidth(170.f, .55f, .2f);
+    m_styleName->limitLabelWidth(160.f, .55f, .2f);
     m_styleDesc->setString(fmt::format("{}  ({}/{})", styles::description(m_style), m_style.index + 1, total).c_str());
-    m_styleDesc->limitLabelWidth(170.f, .38f, .2f);
+    m_styleDesc->limitLabelWidth(160.f, .38f, .2f);
     auto c = styles::swatch(m_style);
     m_swatch->clear();
     m_swatch->drawDot({0, 0}, 5.f, {c.r / 255.f, c.g / 255.f, c.b / 255.f, 1.f});
@@ -664,29 +715,47 @@ void DecoratorPopup::showResult(std::string const& status) {
     setStatus(status);
 }
 
-void DecoratorPopup::onDecorate(CCObject*) {
-    if (m_busy) return;
-    closePanel();
-
-    auto res = styles::generate(m_style, m_selection);
+void DecoratorPopup::runGeneration(Result<styles::Result> res, std::string const& label) {
     if (!res) {
         setStatus(res.unwrapErr(), true);
         return;
     }
-
     // Generation is instant; play a short version of the working animation anyway.
     m_progressTau = .35f;
     startWorking();
     auto r = std::move(res).unwrap();
-    auto name = styles::name(m_style);
     this->runAction(CCSequence::create(
         CCDelayTime::create(1.1f),
-        CallFuncExt::create([self = Ref<DecoratorPopup>(this), r = std::move(r), name]() mutable {
+        CallFuncExt::create([self = Ref<DecoratorPopup>(this), r = std::move(r), label]() mutable {
             if (self->m_closed) return;
             self->m_result = std::move(r.objects);
             self->m_resultColors = std::move(r.colors);
-            self->showResult(fmt::format("{}: {} objects. Press Decorate again for a new variation.", name, self->m_result.size()));
+            self->showResult(fmt::format("{}: {} objects ({}). Press again for a new variation.", label, self->m_result.size(), r.summary));
         }),
         nullptr
     ));
+}
+
+void DecoratorPopup::onDecorate(CCObject*) {
+    if (m_busy) return;
+    closePanel();
+    runGeneration(styles::generate(m_style, m_selection), styles::name(m_style));
+}
+
+void DecoratorPopup::onSend(CCObject*) {
+    if (m_busy) return;
+    closePanel();
+    std::string prompt = m_input->getString();
+    Mod::get()->setSavedValue<std::string>("last-prompt", prompt);
+    runGeneration(styles::generateFromPrompt(prompt, m_selection), prompt.empty() ? std::string("All levels") : std::string("Your description"));
+}
+
+void DecoratorPopup::onDice(CCObject*) {
+    if (m_busy) return;
+    auto total = m_style.level ? styles::levelCount() : styles::groupCount();
+    if (total == 0) return;
+    auto& idx = m_style.level ? m_levelIndex : m_groupIndex;
+    idx = static_cast<size_t>(rand()) % total;
+    refreshStyle();
+    onDecorate(nullptr);
 }

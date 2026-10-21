@@ -13,6 +13,8 @@ struct SelectedObject {
     bool solid;
     bool flipX = false, flipY = false;
     int type = 0;  // GameObjectType
+    float hbW = 0, hbH = 0;  // hitbox size in the editor
+    float radius = 0;        // circular hitbox radius (saws)
 };
 
 // One decoration object to place.
