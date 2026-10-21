@@ -8,7 +8,7 @@
 	},
 	"id": "bob0byte.ai-decorator",
 	"name": "AI Decorator",
-	"version": "v0.6.0",
+	"version": "v0.7.0",
 	"developer": "bob0byte",
 	"description": "Decorate a selected structure in styles learned from 139 real levels, and add trigger effects. Works offline.",
 	"tags": [
@@ -39,7 +39,7 @@
 			"type": "float",
 			"name": "Background Scenery",
 			"description": "How much background decoration to add around the structure. 0 turns it off.",
-			"default": 1.0,
+			"default": 0.5,
 			"min": 0.0,
 			"max": 3.0
 		},
@@ -50,6 +50,20 @@
 			"default": 950,
 			"min": 1,
 			"max": 993
+		},
+		"auto-pulse": {
+			"type": "bool",
+			"name": "Beat Pulses",
+			"description": "When applying, add Pulse triggers on the glow color across the structure, spaced and timed like the source level (most levels: every ~4 blocks, instant flash, 0.3s fade).",
+			"default": true
+		},
+		"glow-opacity": {
+			"type": "float",
+			"name": "Glow Opacity",
+			"description": "Opacity of the style's glow (blending) color channels. The analyzed levels almost all use 1.0.",
+			"default": 1.0,
+			"min": 0.1,
+			"max": 1.0
 		}
 	}
 }

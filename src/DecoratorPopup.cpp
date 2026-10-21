@@ -211,7 +211,7 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection, CCArray* nodes)
     m_decorateRowLabels = CCNode::create();
     m_mainLayer->addChild(m_decorateRowLabels, 4);
 
-    auto modeBtn = roundedButton(64, 34, "Groups", .45f, this, menu_selector(DecoratorPopup::onToggleMode), &m_modeBg, &m_modeLabel);
+    auto modeBtn = roundedButton(64, 34, "Types", .45f, this, menu_selector(DecoratorPopup::onToggleMode), &m_modeBg, &m_modeLabel);
     modeBtn->setPosition({PX + 32, rowY});
     m_decorateRow->addChild(modeBtn);
 
@@ -382,7 +382,7 @@ void DecoratorPopup::onTabTriggers(CCObject*) { closePanel(); setTab(true); }
 
 void DecoratorPopup::refreshStyle() {
     m_style.index = m_style.level ? m_levelIndex : m_groupIndex;
-    m_modeLabel->setString(m_style.level ? "Levels" : "Groups");
+    m_modeLabel->setString(m_style.level ? "Levels" : "Types");
     auto total = m_style.level ? styles::levelCount() : styles::groupCount();
     m_styleName->setString(styles::name(m_style).c_str());
     m_styleName->limitLabelWidth(160.f, .55f, .2f);
@@ -573,6 +573,25 @@ void DecoratorPopup::onApply(CCObject*) {
 
     if (!m_resultColors.empty()) styles::applyColors(m_resultColors);
 
+    // Beat pulses on the glow color across the structure, timed like the source level.
+    if (Mod::get()->getSettingValue<bool>("auto-pulse") && m_resultPulse.channel > 0) {
+        float minX = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
+        for (auto const& d : m_result) { minX = std::min(minX, d.x); maxX = std::max(maxX, d.x); maxY = std::max(maxY, d.y); }
+        auto const& p = m_resultPulse;
+        std::string trig;
+        for (float x = minX - 30.f; x <= maxX; x += p.gap) {
+            trig += fmt::format("1,1006,2,{},3,{},51,{},52,0,45,{},46,{},47,{},7,{},8,{},9,{};",
+                decorator::fmtNum(x), decorator::fmtNum(maxY + 90.f), p.channel,
+                decorator::fmtNum(p.fadeIn), decorator::fmtNum(p.hold), decorator::fmtNum(p.fadeOut),
+                static_cast<int>(p.color.r), static_cast<int>(p.color.g), static_cast<int>(p.color.b));
+        }
+        if (!trig.empty()) {
+            if (auto pulses = editor->createObjectsFromString(gd::string(trig), true, true)) {
+                created->addObjectsFromArray(pulses);
+            }
+        }
+    }
+
     // One undo step for the whole decoration, then select it so it's easy to tweak or delete.
     editor->addToUndoList(UndoObject::createWithArray(created, UndoCommand::Paste), false);
     editor->m_editorUI->deselectAll();
@@ -730,16 +749,25 @@ void DecoratorPopup::runGeneration(Result<styles::Result> res, std::string const
             if (self->m_closed) return;
             self->m_result = std::move(r.objects);
             self->m_resultColors = std::move(r.colors);
-            self->showResult(fmt::format("{}: {} objects ({}). Press again for a new variation.", label, self->m_result.size(), r.summary));
+            self->m_resultPulse = r.pulse;
+            self->showResult(fmt::format("{} (from {}): {} objects on {}. Press again for the next variation.",
+                label, r.source, self->m_result.size(), r.summary));
         }),
         nullptr
     ));
 }
 
+int DecoratorPopup::nextVariant(std::string const& key) {
+    if (key != m_lastKey) { m_lastKey = key; m_variant = 0; }
+    else m_variant++;
+    return m_variant;
+}
+
 void DecoratorPopup::onDecorate(CCObject*) {
     if (m_busy) return;
     closePanel();
-    runGeneration(styles::generate(m_style, m_selection), styles::name(m_style));
+    auto key = fmt::format("style:{}:{}", m_style.level, m_style.index);
+    runGeneration(styles::generate(m_style, m_selection, nextVariant(key)), styles::name(m_style));
 }
 
 void DecoratorPopup::onSend(CCObject*) {
@@ -747,7 +775,8 @@ void DecoratorPopup::onSend(CCObject*) {
     closePanel();
     std::string prompt = m_input->getString();
     Mod::get()->setSavedValue<std::string>("last-prompt", prompt);
-    runGeneration(styles::generateFromPrompt(prompt, m_selection), prompt.empty() ? std::string("All levels") : std::string("Your description"));
+    runGeneration(styles::generateFromPrompt(prompt, m_selection, nextVariant("prompt:" + prompt)),
+        prompt.empty() ? std::string("All levels") : std::string("Your description"));
 }
 
 void DecoratorPopup::onDice(CCObject*) {

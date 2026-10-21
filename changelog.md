@@ -1,3 +1,10 @@
+# v0.7.0
+- Decoration is placed in order: every open side of the same hitbox gets the same pieces, stacked in the source level's layer order (no more random picks).
+- Styles are now community deco types learned from the pack: Glow, Classic, Hell, 3D, Particles, Effect, Retro, Minimal, Nine Circles, Art, Modern.
+- Each press of Use/Go moves to the next most typical level of that type (or the next best match for your description).
+- Beat Pulse triggers on the glow color when applying, timed like the source level.
+- Background pieces are placed in neat grid-snapped rows. Glow opacity setting.
+
 # v0.6.0
 - Description box is back: it mixes every level's decorations, weighted by your words (colors, glow, chains, 3d, level names...).
 - Decoration is sorted by hitbox (block, platform, slope, spike, ground spike, saw...) instead of object ID.

@@ -47,10 +47,30 @@ for s in d['styles'] + d['levels']:
     s['pal'] = [brighten(p) for p in s['pal']]
     s['tags'] = tags_for(s)
     s.pop('from', None) if False else None
+# community deco types (classify.py) and effects (effects.py)
+types = json.load(open(P + '/pack/results/10_deco_types.json'))['types']
+eff = json.load(open(P + '/pack/results/11_level_effects.json'))
+idx = {s['name']: i for i, s in enumerate(d['levels'])}
+TYPE_WORDS = {'Glow': 'glow glowing gradient', 'Modern': 'modern flat clean', 'Nine Circles': 'nine circles nc wave diamond',
+              'Effect': 'effect effects moving animated', 'Art': 'art detailed artistic custom', 'Classic': 'classic tilemap textured old',
+              '3D': '3d depth perspective', 'Hell': 'hell fire lava demon red', 'Retro': 'retro pixel green computer',
+              'Particles': 'particles sparkles circles orbs', 'Minimal': 'minimal simple clean'}
+d['types'] = []
+for t, names in sorted(types.items(), key=lambda kv: -len(kv[1])):
+    d['types'].append({'name': t, 'levels': [idx[n] for n in names if n in idx]})
+    for n in names:
+        if n in idx:
+            lv = d['levels'][idx[n]]; lv['type'] = t
+            for w in TYPE_WORDS[t].split(): lv['tags'][w] = lv['tags'].get(w, 0) + 2.0
+for lv in d['levels']:
+    e = eff.get(lv['name'], {})
+    lv['eff'] = [round(e.get('pulse_gap', 0) or 123.0, 1), round(e.get('fade_in', 0), 3), round(e.get('hold', 0), 3),
+                 round(e.get('fade_out', 0.3) or 0.3, 3), int(e.get('pulses', 0))]
+d.pop('styles', None)
 d['cats'] = cats
 js = json.dumps(d, separators=(',', ':'))
 assert ')__json__"' not in js
 with open(OUTH, 'w') as f:
     f.write('// Generated from the level pack analysis. Do not edit by hand.\n#pragma once\n\n')
     f.write('inline constexpr char STYLE_DATA_JSON[] = R"__json__(' + js + ')__json__";\n')
-print(d['styles'][0]['name'], d['styles'][0]['tags']); print(d['levels'][0]['name'], d['levels'][0]['tags']); print('bytes', len(js), 'styles', len(d['styles']), 'levels', len(d['levels']))
+print([(t['name'], len(t['levels'])) for t in d['types']]); print(d['levels'][0]['name'], d['levels'][0]['tags']); print('bytes', len(js), 'levels', len(d['levels']))

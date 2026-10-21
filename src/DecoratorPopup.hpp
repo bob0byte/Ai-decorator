@@ -10,6 +10,9 @@ protected:
     geode::Ref<cocos2d::CCArray> m_selectedNodes;   // the actual selected objects (for triggers)
     std::vector<DecoObject> m_result;
     std::vector<styles::ChannelColor> m_resultColors;
+    styles::PulseFx m_resultPulse;
+    int m_variant = 0;          // how many times the same style/description was used in a row
+    std::string m_lastKey;      // which style/description that was
     float m_progressTau = .35f;  // how fast the progress estimate climbs
     bool m_hasResult = false;
     bool m_showingAfter = false;
@@ -104,6 +107,7 @@ protected:
     void onSend(cocos2d::CCObject*);
     void onDice(cocos2d::CCObject*);
     void runGeneration(geode::Result<styles::Result> res, std::string const& label);
+    int nextVariant(std::string const& key);
     void onPrevStyle(cocos2d::CCObject*);
     void onNextStyle(cocos2d::CCObject*);
     void onToggleMode(cocos2d::CCObject*);
