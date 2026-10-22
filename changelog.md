@@ -1,3 +1,8 @@
+# v1.0.1
+- AI decoration is consistent: the network votes across the whole structure and its favourite piece for each
+  (hitbox, side) is used on every open side - glow hugs every open edge and fades outward, blocks keep a clean body fill.
+- No glow on top of blocks or on edges touching other blocks; no stacked duplicates.
+
 # v1.0.0
 - Built-in AI: a neural network trained on 2 million examples from 273 levels picks the decoration for every side of every hitbox,
   looking at the 7x7 area around it and the chosen deco type. Runs offline inside the mod.

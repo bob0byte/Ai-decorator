@@ -351,6 +351,73 @@ namespace {
         }
         int aiType = neuralType(style.type);
 
+        // AI network, two passes:
+        //  1) ask the network what it would put on every side of every hitbox (given its surroundings)
+        //  2) per (hitbox kind, side, role) keep the structure-wide favourite and use it on EVERY open side,
+        //     so the design is consistent like a real one (same glow on every edge, same fill in every block).
+        bool useAI = styles::options().useAI;
+        std::map<std::pair<std::string, std::string>, std::vector<Item>> aiPicks;
+        if (useAI) {
+            float thr = styles::options().aiConfidence;
+            std::map<std::tuple<std::string, std::string, int>, std::map<int, float>> votes;  // (cls, side, role) -> token -> score
+            std::map<std::string, int> clsCount;
+            static constexpr char const* SIDE_NAMES[5] = {"center", "top", "bottom", "left", "right"};
+            for (auto const& a : anchors) {
+                auto const& o = *a.o;
+                clsCount[a.cls]++;
+                bool gridded = a.cls == "block" || a.cls == "platform" || a.cls == "slope";
+                auto [cx, cy] = cellOf(o.x, o.y);
+                int quarter = ((static_cast<int>(std::lround(o.rotation / 90.f)) % 4) + 4) % 4;
+                std::array<int8_t, (2 * nn::R + 1) * (2 * nn::R + 1)> nb{};
+                int c = 0;
+                for (int dy = -nn::R; dy <= nn::R; dy++)
+                    for (int dx = -nn::R; dx <= nn::R; dx++, c++) {
+                        if (dx == 0 && dy == 0) continue;
+                        if (auto it = occ.find({cx + dx, cy + dy}); it != occ.end()) nb[c] = static_cast<int8_t>(it->second);
+                    }
+                for (int si = 0; si < 5; si++) {
+                    std::string side = SIDE_NAMES[si];
+                    auto const& p = neuralForward(neuralHitbox(a.cls), si, quarter, aiType, nb);
+                    std::array<int, nn::V> order;
+                    for (int j = 0; j < nn::V; j++) order[j] = j;
+                    std::partial_sort(order.begin(), order.begin() + 24, order.end(), [&](int x, int y) { return p[x] > p[y]; });
+                    for (int r = 0; r < 24; r++) {
+                        int j = order[r];
+                        if (p[j] < thr * .5f) break;
+                        auto const& t = nn::TOKENS[j];
+                        auto role = roleOf(t.id);
+                        if (role == Role::None || role == Role::Persp || !usable(t.id)) continue;
+                        if (gridded && side == "center" && role != Role::Body) continue;      // inside: only the fill
+                        if (gridded && side != "center") {
+                            if (role == Role::Body) continue;
+                            if (role == Role::Glow && (t.out < 6.f || t.out > 30.f || std::abs(t.along) > 6.f || std::lround(t.rot) % 360 != 0)) continue;  // hug the edge, fade outward
+                            if (role == Role::Line && (t.out < 10.f || t.out > 18.f)) continue;
+                        }
+                        if (!gridded && role == Role::Body) continue;
+                        votes[{a.cls, side, static_cast<int>(role)}][j] += p[j];
+                    }
+                }
+            }
+            auto const& op = styles::options();
+            for (auto const& [key, toks] : votes) {
+                auto const& [cls, side, roleInt] = key;
+                auto role = static_cast<Role>(roleInt);
+                bool gridded = cls == "block" || cls == "platform" || cls == "slope";
+                if (role == Role::Body && !op.body) continue;
+                if (role == Role::Glow && !(gridded ? op.glow : op.hazardGlow)) continue;
+                if ((role == Role::Line || role == Role::Chain) && !op.lines) continue;
+                if (role == Role::Particle && !op.particles) continue;
+                auto best = std::max_element(toks.begin(), toks.end(), [](auto const& x, auto const& y) { return x.second < y.second; });
+                if (best->second / std::max(1, clsCount[cls]) < thr * .15f) continue;  // the network rarely wanted this here
+                auto const& t = nn::TOKENS[best->first];
+                auto& list = aiPicks[{cls, side}];
+                if (static_cast<int>(list.size()) >= std::max(1, maxLayers) + 1) continue;
+                list.push_back({t.id, best->second, t.along, t.out, t.rot, std::min(t.sx, 1.5f), std::min(t.sy, 1.5f), 0.f, t.z, t.zo, 0});
+            }
+            for (auto& [key, list] : aiPicks)
+                std::sort(list.begin(), list.end(), [](Item const& x, Item const& y) { return x.z != y.z ? x.z < y.z : x.zo < y.zo; });
+        }
+
         std::map<std::string, int> classCounts;
         for (auto const& a : anchors) {
             auto const& o = *a.o;
@@ -360,46 +427,13 @@ namespace {
             int quarter = ((static_cast<int>(std::lround(o.rotation / 90.f)) % 4) + 4) % 4;
             float sizeK = gridded && o.hbW > 1 && o.hbH > 1 ? std::clamp(std::max(o.hbW, o.hbH) / 30.f, .5f, 4.f) : 1.f;
 
-            // AI network: what to put on each side of THIS hitbox, given its surroundings.
-            std::array<std::vector<Item>, 5> aiItems;
-            bool useAI = styles::options().useAI;
-            if (useAI) {
-                std::array<int8_t, (2 * nn::R + 1) * (2 * nn::R + 1)> nb{};
-                int c = 0;
-                for (int dy = -nn::R; dy <= nn::R; dy++)
-                    for (int dx = -nn::R; dx <= nn::R; dx++, c++) {
-                        if (dx == 0 && dy == 0) continue;
-                        if (auto it = occ.find({cx + dx, cy + dy}); it != occ.end()) nb[c] = static_cast<int8_t>(it->second);
-                    }
-                float thr = styles::options().aiConfidence;
-                int maxK = std::max(1, maxLayers);
-                for (int si = 0; si < 5; si++) {
-                    auto const& p = neuralForward(neuralHitbox(a.cls), si, quarter, aiType, nb);
-                    std::array<int, nn::V> order;
-                    for (int j = 0; j < nn::V; j++) order[j] = j;
-                    std::partial_sort(order.begin(), order.begin() + 16, order.end(), [&](int x, int y) { return p[x] > p[y]; });
-                    std::set<int> usedRoles;
-                    for (int r = 0; r < 16 && static_cast<int>(aiItems[si].size()) < maxK; r++) {
-                        int j = order[r];
-                        if (p[j] < thr) break;
-                        auto const& t = nn::TOKENS[j];
-                        auto role = roleOf(t.id);
-                        if (role == Role::None || usedRoles.count(static_cast<int>(role)) || !usable(t.id)) continue;
-                        if (role == Role::Body && !styles::options().body) continue;
-                        if (role == Role::Glow && !(gridded ? styles::options().glow : styles::options().hazardGlow)) continue;
-                        if ((role == Role::Line || role == Role::Chain) && !styles::options().lines) continue;
-                        if (role == Role::Particle && !styles::options().particles) continue;
-                        usedRoles.insert(static_cast<int>(role));
-                        aiItems[si].push_back({t.id, p[j], t.along, t.out, t.rot, t.sx, t.sy, 0.f, t.z, t.zo, 0});
-                    }
-                }
-            }
-
             int sideIndex = -1;
             for (std::string side : {"center", "top", "bottom", "left", "right"}) {
                 sideIndex++;
                 std::vector<Item const*> aiPk;
-                if (useAI) for (auto const& it : aiItems[sideIndex]) aiPk.push_back(&it);
+                if (useAI) {
+                    if (auto it = aiPicks.find({a.cls, side}); it != aiPicks.end()) for (auto const& item : it->second) aiPk.push_back(&item);
+                }
                 auto const& pk = useAI ? aiPk : pickFor(a.cls, side);
                 if (pk.empty()) continue;
                 if (gridded && side != "center") {
@@ -624,7 +658,7 @@ styles::Options& styles::options() {
         o.hue = static_cast<int>(m->getSavedValue<int64_t>("opt-hue", 0)); o.brightness = f("opt-brightness", 1.f);
         o.pulseBlocks = static_cast<int>(m->getSavedValue<int64_t>("opt-pulse-blocks", 0));
         o.colorMode = static_cast<int>(m->getSavedValue<int64_t>("opt-color-mode", 0));
-        o.useAI = b("opt-ai", true); o.aiConfidence = f("opt-ai-conf", .12f);
+        o.useAI = b("opt-ai", true); o.aiConfidence = f("opt-ai-conf-v2", .08f);
         return o;
     }();
     return o;
@@ -640,7 +674,7 @@ void styles::saveOptions() {
     m->setSavedValue<double>("opt-body-opacity", o.bodyOpacity); m->setSavedValue<int64_t>("opt-hue", o.hue);
     m->setSavedValue<double>("opt-brightness", o.brightness); m->setSavedValue<int64_t>("opt-pulse-blocks", o.pulseBlocks);
     m->setSavedValue<int64_t>("opt-color-mode", o.colorMode);
-    m->setSavedValue<bool>("opt-ai", o.useAI); m->setSavedValue<double>("opt-ai-conf", o.aiConfidence);
+    m->setSavedValue<bool>("opt-ai", o.useAI); m->setSavedValue<double>("opt-ai-conf-v2", o.aiConfidence);
 }
 
 size_t styles::typeCount() { return data().types.size(); }
