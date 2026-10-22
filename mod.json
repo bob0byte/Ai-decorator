@@ -8,9 +8,9 @@
 	},
 	"id": "bob0byte.ai-decorator",
 	"name": "AI Decorator",
-	"version": "v1.1.0",
+	"version": "v1.2.0",
 	"developer": "bob0byte",
-	"description": "Decorate a selected structure in styles learned from 273 real levels, with pulses, color shifts and trigger effects. Works offline.",
+	"description": "Decorate a selected structure like 311 real levels (including all official levels), with pulses, color shifts and trigger effects. Works offline.",
 	"tags": [
 		"editor",
 		"enhancement"

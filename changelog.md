@@ -1,3 +1,6 @@
+# v1.2.0
+- 46 more levels (all official RobTop levels, ORBIT, Skeletal Shenanigans, Streetwise...): 311 level styles, real decoration copies for all of them.
+
 # v1.1.0
 - New "Copy real deco" mode (on by default): each selected hitbox gets the exact decoration the chosen level
   put around a hitbox of the same kind with the same open sides - real objects, offsets, rotations, scales, layers and colors.
