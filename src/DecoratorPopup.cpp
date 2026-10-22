@@ -408,12 +408,13 @@ void DecoratorPopup::onTabOptions(CCObject*) { closePanel(); setTabIndex(2); }
 // Toggles (tags 0-7), steppers (tags 100+ = minus, 200+ = plus), cycles for color mode / theme.
 namespace {
     struct ToggleDef { char const* name; bool styles::Options::* field; };
-    constexpr std::array<ToggleDef, 8> TOGGLES = {{
+    constexpr std::array<ToggleDef, 9> TOGGLES = {{
+        {"AI network", &styles::Options::useAI},
         {"Body fill", &styles::Options::body}, {"Edge glow", &styles::Options::glow}, {"Outlines", &styles::Options::lines},
         {"Spike/saw glow", &styles::Options::hazardGlow}, {"Particles", &styles::Options::particles},
         {"Background", &styles::Options::scenery}, {"Beat pulses", &styles::Options::pulses}, {"Color shift", &styles::Options::colorShift},
     }};
-    constexpr std::array<char const*, 8> STEPPERS = {"Glow size", "Glow opacity", "Body opacity", "Hue shift", "Brightness", "Pulse every", "Colors", "Theme"};
+    constexpr std::array<char const*, 9> STEPPERS = {"Glow size", "Glow opacity", "Body opacity", "Hue shift", "Brightness", "Pulse every", "Colors", "Theme", "AI confidence"};
     constexpr std::array<char const*, 3> COLOR_MODES = {"Style", "Keep mine", "Mono"};
 }
 
@@ -425,23 +426,23 @@ void DecoratorPopup::buildOptions() {
     m_mainLayer->addChild(m_optLabels, 9);
 
     // toggles: 4 x 2
-    constexpr float tw = 96.f, th = 26.f, tg = 5.f;
-    float x0 = W / 2 - (4 * tw + 3 * tg) / 2 + tw / 2;
+    constexpr float tw = 78.f, th = 26.f, tg = 4.f;
+    float x0 = W / 2 - (5 * tw + 4 * tg) / 2 + tw / 2;
     for (size_t i = 0; i < TOGGLES.size(); i++) {
         CCScale9Sprite* bg = nullptr;
         CCLabelBMFont* lbl = nullptr;
-        auto btn = roundedButton(tw, th, TOGGLES[i].name, .42f, this, menu_selector(DecoratorPopup::onOptToggle), &bg, &lbl);
+        auto btn = roundedButton(tw, th, TOGGLES[i].name, .36f, this, menu_selector(DecoratorPopup::onOptToggle), &bg, &lbl);
         btn->setTag(static_cast<int>(i));
-        btn->setPosition({x0 + (i % 4) * (tw + tg), H - 58 - (i / 4) * (th + tg)});
+        btn->setPosition({x0 + (i % 5) * (tw + tg), H - 58 - (i / 5) * (th + tg)});
         m_optMenu->addChild(btn);
         m_optToggleBgs.push_back(bg);
         m_optTextLabels.push_back(lbl);
     }
     // steppers: 2 columns x 4 rows: [label | - value +]
-    constexpr float rowH = 30.f, colW = 200.f;
+    constexpr float rowH = 26.f, colW = 200.f;
     for (size_t i = 0; i < STEPPERS.size(); i++) {
         float cx = W / 2 - colW / 2 - 4 + (i % 2) * (colW + 8);
-        float cy = H - 132 - (i / 2) * (rowH + 6);
+        float cy = H - 126 - (i / 2) * (rowH + 4);
         auto panel = rounded(colW, rowH);
         panel->setPosition({cx, cy});
         m_optLabels->addChild(panel, -1);
@@ -470,7 +471,7 @@ void DecoratorPopup::buildOptions() {
     }
     CCScale9Sprite* rb = nullptr; CCLabelBMFont* rl = nullptr;
     auto reset = roundedButton(110, 24, "Reset options", .42f, this, menu_selector(DecoratorPopup::onOptReset), &rb, &rl);
-    reset->setPosition({W / 2, 26});
+    reset->setPosition({W / 2 + 104, H - 126 - 4 * 30.f});
     m_optMenu->addChild(reset);
     m_optPanels.push_back(rb); m_optTextLabels.push_back(rl);
     m_optMenu->setVisible(false);
@@ -488,10 +489,11 @@ void DecoratorPopup::refreshOptions() {
         setBorder(m_optToggleBgs[i], on ? mix(t.accent, {255, 255, 255}, .35f) : mix(t.panel, t.text, .25f));
         m_optTextLabels[i]->setOpacity(on ? 255 : 140);
     }
-    std::array<std::string, 8> v = {
+    std::array<std::string, 9> v = {
         fmt::format("{:.0f}%", o.glowScale * 100), fmt::format("{:.0f}%", o.glowOpacity * 100), fmt::format("{:.0f}%", o.bodyOpacity * 100),
         fmt::format("{}{}", o.hue > 0 ? "+" : "", o.hue), fmt::format("{:.0f}%", o.brightness * 100),
-        o.pulseBlocks == 0 ? std::string("Auto") : fmt::format("{} blocks", o.pulseBlocks), COLOR_MODES[o.colorMode % 3], currentTheme().name};
+        o.pulseBlocks == 0 ? std::string("Auto") : fmt::format("{} blocks", o.pulseBlocks), COLOR_MODES[o.colorMode % 3], currentTheme().name,
+        fmt::format("{:.0f}%", o.aiConfidence * 100)};
     for (size_t i = 0; i < v.size() && i < m_optValueLabels.size(); i++) {
         m_optValueLabels[i]->setString(v[i].c_str());
         m_optValueLabels[i]->limitLabelWidth(52.f, .42f, .2f);
@@ -537,6 +539,7 @@ void DecoratorPopup::onOptStep(CCObject* sender) {
         case 5: o.pulseBlocks = std::clamp(o.pulseBlocks + dir, 0, 16); break;
         case 6: o.colorMode = (o.colorMode + dir + 3) % 3; break;
         case 7: setTheme((currentThemeIndex() + THEMES.size() + dir) % THEMES.size()); applyTheme(); break;
+        case 8: step(o.aiConfidence, .05f, .05f, .9f); break;
     }
     optionsChanged();
 }
