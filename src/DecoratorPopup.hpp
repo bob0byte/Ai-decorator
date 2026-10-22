@@ -3,6 +3,7 @@
 #include <Geode/Geode.hpp>
 #include "Decorator.hpp"
 #include "StyleDecorator.hpp"
+#include <functional>
 
 class DecoratorPopup : public geode::Popup {
 protected:
@@ -11,6 +12,9 @@ protected:
     std::vector<DecoObject> m_result;
     std::vector<styles::ChannelColor> m_resultColors;
     styles::PulseFx m_resultPulse;
+    styles::ColorShiftFx m_resultShift;
+    std::function<geode::Result<styles::Result>()> m_lastGen;  // re-run when options change
+    std::string m_lastLabel;
     int m_variant = 0;          // how many times the same style/description was used in a row
     std::string m_lastKey;      // which style/description that was
     float m_progressTau = .35f;  // how fast the progress estimate climbs
@@ -24,6 +28,25 @@ protected:
     size_t m_groupIndex = 0, m_levelIndex = 0;
     int m_triggerGroup = 0;
     bool m_triggersTab = false;
+    int m_tab = 0;  // 0 decorate, 1 triggers, 2 options
+
+    // Options tab
+    cocos2d::CCMenu* m_optMenu = nullptr;
+    cocos2d::CCNode* m_optLabels = nullptr;
+    cocos2d::extension::CCScale9Sprite* m_tabOptBg = nullptr;
+    cocos2d::CCLabelBMFont* m_tabOptLabel = nullptr;
+    std::vector<cocos2d::extension::CCScale9Sprite*> m_optToggleBgs;
+    std::vector<cocos2d::CCLabelBMFont*> m_optValueLabels;
+    std::vector<cocos2d::extension::CCScale9Sprite*> m_optPanels;
+    std::vector<cocos2d::CCLabelBMFont*> m_optTextLabels;
+    void buildOptions();
+    void refreshOptions();
+    void optionsChanged();
+    void onOptToggle(cocos2d::CCObject*);
+    void onOptStep(cocos2d::CCObject*);
+    void onOptReset(cocos2d::CCObject*);
+    void onTabOptions(cocos2d::CCObject*);
+    void setTabIndex(int tab);
 
     // Themed nodes (recolored by applyTheme).
     cocos2d::extension::CCScale9Sprite* m_window = nullptr;

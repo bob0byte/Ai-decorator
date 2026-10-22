@@ -1,3 +1,11 @@
+# v0.9.0
+- Learned from 273 levels (second level pack added; 23 million objects), sorted into 11 deco types. Nine Circles uses the AREDL "Circles" tag; AREDL version tags (1.9/2.0/2.1/2.2) are searchable.
+- New Options tab: toggle body fill, edge glow, outlines, spike/saw glow, particles, background, beat pulses, color shift;
+  adjust glow size, glow opacity, body opacity, hue shift, brightness, pulse spacing, color mode (style / keep mine / mono), theme.
+  Options are remembered and the preview updates right away.
+- Color shift: the glow changes color mid-structure and back, timed like real levels (fast, ~0.15s).
+- Body and glow channel opacity are applied to the color channels.
+
 # v0.8.0
 - Existing decoration, triggers and no-touch objects in the selection are skipped (they were being decorated as if they were blocks).
 - Clean rules: each block gets one body fill (behind it) + one glow; each open edge one glow or outline hugging the edge; spikes/saws one glow.

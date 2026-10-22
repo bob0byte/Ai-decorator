@@ -71,6 +71,13 @@ S['Hell'] = z('red_share') * 1.3 + z('dark') * .5 + z('chains') * .4
 S['Retro'] = z('green_share') * 1.0 + z('pixel') * 1.0 + z('lines') * .5
 S['Particles'] = z('particles') * 1.5
 S['Minimal'] = -z('deco_per_gameplay') * 1.0 - z('distinct_deco') * .8
+# AREDL community tags: 'Circles' marks Nine Circles levels
+try:
+    AT = json.load(open(P + '/aredl_tags.json'))
+    circ = F.level.map(lambda n: 'Circles' in AT.get(n.lower().strip(), []))
+    S.loc[circ.values, 'Nine Circles'] += 3.0
+except FileNotFoundError:
+    pass
 types = [c for c in S.columns if c != 'level']
 F['type'] = S[types].idxmax(axis=1)
 F['type_score'] = S[types].max(axis=1)

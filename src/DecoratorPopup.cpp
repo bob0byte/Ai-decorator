@@ -9,6 +9,8 @@
 #include <Geode/binding/GameObject.hpp>
 #include <cmath>
 #include <map>
+#include <functional>
+#include <array>
 #include <algorithm>
 
 using namespace geode::prelude;
@@ -128,24 +130,26 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection, CCArray* nodes)
     }
     m_subtitle->setAnchorPoint({0, .5f});
     m_subtitle->setPosition({PX + 4 + m_title->getScaledContentWidth() + 6, H - 23});
-    m_subtitle->limitLabelWidth(W / 2 + 4 - (PX + 4 + m_title->getScaledContentWidth() + 6), .4f, .2f);
+    m_subtitle->limitLabelWidth(186 - (PX + 4 + m_title->getScaledContentWidth() + 6), .4f, .15f);
     m_mainLayer->addChild(m_subtitle);
 
     // Tabs
-    auto tabDeco = roundedButton(70, 22, "Decorate", .45f, this, menu_selector(DecoratorPopup::onTabDecorate), &m_tabDecoBg, &m_tabDecoLabel);
-    tabDeco->setPosition({W / 2 + 40, H - 22});
+    auto tabDeco = roundedButton(64, 22, "Decorate", .42f, this, menu_selector(DecoratorPopup::onTabDecorate), &m_tabDecoBg, &m_tabDecoLabel);
+    tabDeco->setPosition({220, H - 22});
     m_buttonMenu->addChild(tabDeco);
-    auto tabTrig = roundedButton(70, 22, "Triggers", .45f, this, menu_selector(DecoratorPopup::onTabTriggers), &m_tabTrigBg, &m_tabTrigLabel);
-    tabTrig->setPosition({W / 2 + 114, H - 22});
+    auto tabTrig = roundedButton(64, 22, "Triggers", .42f, this, menu_selector(DecoratorPopup::onTabTriggers), &m_tabTrigBg, &m_tabTrigLabel);
+    tabTrig->setPosition({288, H - 22});
     m_buttonMenu->addChild(tabTrig);
+    auto tabOpt = roundedButton(64, 22, "Options", .42f, this, menu_selector(DecoratorPopup::onTabOptions), &m_tabOptBg, &m_tabOptLabel);
+    tabOpt->setPosition({356, H - 22});
+    m_buttonMenu->addChild(tabOpt);
 
     m_gear = CCSprite::createWithSpriteFrameName("accountBtn_settings_001.png");
     if (!m_gear) m_gear = CCSprite::createWithSpriteFrameName("GJ_optionsBtn_001.png");
     m_gear->setScale(.42f);
     m_gear->setOpacity(110);
-    auto gearBtn = CCMenuItemSpriteExtra::create(m_gear, this, menu_selector(DecoratorPopup::onGear));
-    gearBtn->setPosition({W - 54, H - 22});
-    m_buttonMenu->addChild(gearBtn);
+    m_gear->setVisible(false);  // themes live in the Options tab now
+    m_mainLayer->addChild(m_gear);
 
     auto closeBtn = roundedButton(24, 24, "X", .6f, this, menu_selector(DecoratorPopup::onClose), &m_closeBg, &m_closeLabel);
     closeBtn->setPosition({W - 24, H - 22});
@@ -301,6 +305,7 @@ bool DecoratorPopup::init(std::vector<SelectedObject> selection, CCArray* nodes)
     m_status->setPosition({PX + 10, PY + 8});
     m_mainLayer->addChild(m_status, 7);
 
+    buildOptions();
     applyTheme();
     refreshStyle();
     setTab(false);
@@ -349,8 +354,15 @@ void DecoratorPopup::applyTheme() {
     m_afterBg->setColor(m_showingAfter ? t.accent : t.panel);
     m_beforeLabel->setColor(t.text);
     m_afterLabel->setColor(t.text);
-    m_tabDecoBg->setColor(m_triggersTab ? t.panel : t.accent);
-    m_tabTrigBg->setColor(m_triggersTab ? t.accent : t.panel);
+    m_tabDecoBg->setColor(m_tab == 0 ? t.accent : t.panel);
+    m_tabTrigBg->setColor(m_tab == 1 ? t.accent : t.panel);
+    m_tabOptBg->setColor(m_tab == 2 ? t.accent : t.panel);
+    setBorder(m_tabOptBg, border);
+    m_tabOptLabel->setColor(t.text);
+    for (auto bg : m_optPanels) { bg->setColor(t.panel); setBorder(bg, border); }
+    for (auto l : m_optTextLabels) l->setColor(t.text);
+    for (auto l : m_optValueLabels) l->setColor(t.text);
+    refreshOptions();
     setBorder(m_tabDecoBg, border);
     setBorder(m_tabTrigBg, border);
     m_tabDecoLabel->setColor(t.text);
@@ -358,27 +370,181 @@ void DecoratorPopup::applyTheme() {
     if (!m_busy) m_status->setColor(t.subtext);
 }
 
-void DecoratorPopup::setTab(bool trig) {
+void DecoratorPopup::setTab(bool trig) { setTabIndex(trig ? 1 : 0); }
+
+void DecoratorPopup::setTabIndex(int tab) {
     if (m_busy) return;
-    m_triggersTab = trig;
+    m_tab = tab;
+    m_triggersTab = tab == 1;
+    bool deco = tab == 0, trig = tab == 1, opt = tab == 2;
     m_triggerGrid->setVisible(trig);
     m_triggerGrid->setEnabled(trig);
-    m_decorateRow->setVisible(!trig);
-    m_decorateRow->setEnabled(!trig);
-    m_decorateRowLabels->setVisible(!trig);
-    m_inputRow->setVisible(!trig);
-    m_inputRow->setEnabled(!trig);
-    m_input->setVisible(!trig);
-    m_inputBg->setVisible(!trig);
-    m_previewContent->setVisible(!trig);
-    m_previewHint->setVisible(!trig);
-    for (auto b : {m_beforeBtn, m_afterBtn, m_applyBtn}) b->setVisible(!trig && m_hasResult);
-    setStatus(trig ? "Adds triggers for the selected structure (it gets its own group)." : "");
+    m_optMenu->setVisible(opt);
+    m_optMenu->setEnabled(opt);
+    m_optLabels->setVisible(opt);
+    m_decorateRow->setVisible(deco);
+    m_decorateRow->setEnabled(deco);
+    m_decorateRowLabels->setVisible(deco);
+    m_inputRow->setVisible(deco);
+    m_inputRow->setEnabled(deco);
+    m_input->setVisible(deco);
+    m_inputBg->setVisible(deco);
+    m_previewBg->setVisible(!opt);
+    m_clipper->setVisible(!opt);
+    m_previewContent->setVisible(deco);
+    m_previewHint->setVisible(deco);
+    for (auto b : {m_beforeBtn, m_afterBtn, m_applyBtn}) b->setVisible(deco && m_hasResult);
+    setStatus(trig ? "Adds triggers for the selected structure (it gets its own group)." :
+              opt ? "" : "");
+    m_status->setVisible(!opt);
     applyTheme();
 }
 
-void DecoratorPopup::onTabDecorate(CCObject*) { closePanel(); setTab(false); }
-void DecoratorPopup::onTabTriggers(CCObject*) { closePanel(); setTab(true); }
+void DecoratorPopup::onTabDecorate(CCObject*) { closePanel(); setTabIndex(0); }
+void DecoratorPopup::onTabTriggers(CCObject*) { closePanel(); setTabIndex(1); }
+void DecoratorPopup::onTabOptions(CCObject*) { closePanel(); setTabIndex(2); }
+
+// ---------------- Options tab ----------------
+// Toggles (tags 0-7), steppers (tags 100+ = minus, 200+ = plus), cycles for color mode / theme.
+namespace {
+    struct ToggleDef { char const* name; bool styles::Options::* field; };
+    constexpr std::array<ToggleDef, 8> TOGGLES = {{
+        {"Body fill", &styles::Options::body}, {"Edge glow", &styles::Options::glow}, {"Outlines", &styles::Options::lines},
+        {"Spike/saw glow", &styles::Options::hazardGlow}, {"Particles", &styles::Options::particles},
+        {"Background", &styles::Options::scenery}, {"Beat pulses", &styles::Options::pulses}, {"Color shift", &styles::Options::colorShift},
+    }};
+    constexpr std::array<char const*, 8> STEPPERS = {"Glow size", "Glow opacity", "Body opacity", "Hue shift", "Brightness", "Pulse every", "Colors", "Theme"};
+    constexpr std::array<char const*, 3> COLOR_MODES = {"Style", "Keep mine", "Mono"};
+}
+
+void DecoratorPopup::buildOptions() {
+    m_optMenu = CCMenu::create();
+    m_optMenu->setPosition({0, 0});
+    m_mainLayer->addChild(m_optMenu, 8);
+    m_optLabels = CCNode::create();
+    m_mainLayer->addChild(m_optLabels, 9);
+
+    // toggles: 4 x 2
+    constexpr float tw = 96.f, th = 26.f, tg = 5.f;
+    float x0 = W / 2 - (4 * tw + 3 * tg) / 2 + tw / 2;
+    for (size_t i = 0; i < TOGGLES.size(); i++) {
+        CCScale9Sprite* bg = nullptr;
+        CCLabelBMFont* lbl = nullptr;
+        auto btn = roundedButton(tw, th, TOGGLES[i].name, .42f, this, menu_selector(DecoratorPopup::onOptToggle), &bg, &lbl);
+        btn->setTag(static_cast<int>(i));
+        btn->setPosition({x0 + (i % 4) * (tw + tg), H - 58 - (i / 4) * (th + tg)});
+        m_optMenu->addChild(btn);
+        m_optToggleBgs.push_back(bg);
+        m_optTextLabels.push_back(lbl);
+    }
+    // steppers: 2 columns x 4 rows: [label | - value +]
+    constexpr float rowH = 30.f, colW = 200.f;
+    for (size_t i = 0; i < STEPPERS.size(); i++) {
+        float cx = W / 2 - colW / 2 - 4 + (i % 2) * (colW + 8);
+        float cy = H - 132 - (i / 2) * (rowH + 6);
+        auto panel = rounded(colW, rowH);
+        panel->setPosition({cx, cy});
+        m_optLabels->addChild(panel, -1);
+        m_optPanels.push_back(panel);
+        auto name = text(STEPPERS[i], .42f);
+        name->setAnchorPoint({0, .5f});
+        name->setPosition({cx - colW / 2 + 10, cy});
+        m_optLabels->addChild(name);
+        m_optTextLabels.push_back(name);
+        auto val = text("", .42f);
+        val->setPosition({cx + colW / 2 - 52, cy});
+        m_optLabels->addChild(val);
+        m_optValueLabels.push_back(val);
+        CCScale9Sprite* mb = nullptr; CCScale9Sprite* pb = nullptr;
+        CCLabelBMFont* ml = nullptr; CCLabelBMFont* pl = nullptr;
+        auto minus = roundedButton(22, 22, "-", .6f, this, menu_selector(DecoratorPopup::onOptStep), &mb, &ml);
+        minus->setTag(100 + static_cast<int>(i));
+        minus->setPosition({cx + colW / 2 - 90, cy});
+        m_optMenu->addChild(minus);
+        auto plus = roundedButton(22, 22, "+", .6f, this, menu_selector(DecoratorPopup::onOptStep), &pb, &pl);
+        plus->setTag(200 + static_cast<int>(i));
+        plus->setPosition({cx + colW / 2 - 14, cy});
+        m_optMenu->addChild(plus);
+        m_optPanels.push_back(mb); m_optPanels.push_back(pb);
+        m_optTextLabels.push_back(ml); m_optTextLabels.push_back(pl);
+    }
+    CCScale9Sprite* rb = nullptr; CCLabelBMFont* rl = nullptr;
+    auto reset = roundedButton(110, 24, "Reset options", .42f, this, menu_selector(DecoratorPopup::onOptReset), &rb, &rl);
+    reset->setPosition({W / 2, 26});
+    m_optMenu->addChild(reset);
+    m_optPanels.push_back(rb); m_optTextLabels.push_back(rl);
+    m_optMenu->setVisible(false);
+    m_optMenu->setEnabled(false);
+    m_optLabels->setVisible(false);
+}
+
+void DecoratorPopup::refreshOptions() {
+    if (!m_optMenu) return;
+    auto const& o = styles::options();
+    auto const& t = currentTheme();
+    for (size_t i = 0; i < TOGGLES.size() && i < m_optToggleBgs.size(); i++) {
+        bool on = o.*(TOGGLES[i].field);
+        m_optToggleBgs[i]->setColor(on ? t.accent : t.panel);
+        setBorder(m_optToggleBgs[i], on ? mix(t.accent, {255, 255, 255}, .35f) : mix(t.panel, t.text, .25f));
+        m_optTextLabels[i]->setOpacity(on ? 255 : 140);
+    }
+    std::array<std::string, 8> v = {
+        fmt::format("{:.0f}%", o.glowScale * 100), fmt::format("{:.0f}%", o.glowOpacity * 100), fmt::format("{:.0f}%", o.bodyOpacity * 100),
+        fmt::format("{}{}", o.hue > 0 ? "+" : "", o.hue), fmt::format("{:.0f}%", o.brightness * 100),
+        o.pulseBlocks == 0 ? std::string("Auto") : fmt::format("{} blocks", o.pulseBlocks), COLOR_MODES[o.colorMode % 3], currentTheme().name};
+    for (size_t i = 0; i < v.size() && i < m_optValueLabels.size(); i++) {
+        m_optValueLabels[i]->setString(v[i].c_str());
+        m_optValueLabels[i]->limitLabelWidth(52.f, .42f, .2f);
+    }
+}
+
+void DecoratorPopup::optionsChanged() {
+    styles::saveOptions();
+    refreshOptions();
+    // Rebuild the current result with the new options so the preview stays up to date.
+    if (m_hasResult && m_lastGen) {
+        auto res = m_lastGen();
+        if (res) {
+            auto r = std::move(res).unwrap();
+            m_result = std::move(r.objects);
+            m_resultColors = std::move(r.colors);
+            m_resultPulse = r.pulse;
+            m_resultShift = r.shift;
+        }
+    }
+}
+
+void DecoratorPopup::onOptToggle(CCObject* sender) {
+    auto i = static_cast<size_t>(static_cast<CCNode*>(sender)->getTag());
+    if (i >= TOGGLES.size()) return;
+    auto& o = styles::options();
+    o.*(TOGGLES[i].field) = !(o.*(TOGGLES[i].field));
+    optionsChanged();
+}
+
+void DecoratorPopup::onOptStep(CCObject* sender) {
+    int tag = static_cast<CCNode*>(sender)->getTag();
+    int dir = tag >= 200 ? 1 : -1;
+    int i = tag % 100;
+    auto& o = styles::options();
+    auto step = [&](float& v, float d, float lo, float hi) { v = std::clamp(std::round((v + d * dir) * 100.f) / 100.f, lo, hi); };
+    switch (i) {
+        case 0: step(o.glowScale, .1f, .3f, 2.5f); break;
+        case 1: step(o.glowOpacity, .1f, .1f, 1.f); break;
+        case 2: step(o.bodyOpacity, .1f, .1f, 1.f); break;
+        case 3: o.hue = ((o.hue + dir * 30 + 180) % 360 + 360) % 360 - 180; break;
+        case 4: step(o.brightness, .1f, .3f, 1.5f); break;
+        case 5: o.pulseBlocks = std::clamp(o.pulseBlocks + dir, 0, 16); break;
+        case 6: o.colorMode = (o.colorMode + dir + 3) % 3; break;
+        case 7: setTheme((currentThemeIndex() + THEMES.size() + dir) % THEMES.size()); applyTheme(); break;
+    }
+    optionsChanged();
+}
+
+void DecoratorPopup::onOptReset(CCObject*) {
+    styles::options() = styles::Options{};
+    optionsChanged();
+}
 
 void DecoratorPopup::refreshStyle() {
     m_style.index = m_style.level ? m_levelIndex : m_groupIndex;
@@ -574,7 +740,7 @@ void DecoratorPopup::onApply(CCObject*) {
     if (!m_resultColors.empty()) styles::applyColors(m_resultColors);
 
     // Beat pulses on the glow color across the structure, timed like the source level.
-    if (Mod::get()->getSettingValue<bool>("auto-pulse") && m_resultPulse.channel > 0) {
+    if (styles::options().pulses && m_resultPulse.channel > 0) {
         float minX = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
         for (auto const& d : m_result) { minX = std::min(minX, d.x); maxX = std::max(maxX, d.x); maxY = std::max(maxY, d.y); }
         auto const& p = m_resultPulse;
@@ -592,6 +758,19 @@ void DecoratorPopup::onApply(CCObject*) {
                 created->addObjectsFromArray(pulses);
             }
         }
+    }
+
+    // Color shift: the glow changes color in the middle of the structure and back at the end.
+    if (m_resultShift.enabled && m_resultShift.channel > 0) {
+        float minX = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
+        for (auto const& d : m_result) { minX = std::min(minX, d.x); maxX = std::max(maxX, d.x); maxY = std::max(maxY, d.y); }
+        auto const& c = m_resultShift;
+        auto colorTrig = [&](float x, ccColor3B col) {
+            return fmt::format("1,899,2,{},3,{},23,{},7,{},8,{},9,{},10,{},17,1,35,1;", decorator::fmtNum(x), decorator::fmtNum(maxY + 120.f),
+                c.channel, static_cast<int>(col.r), static_cast<int>(col.g), static_cast<int>(col.b), decorator::fmtNum(c.duration));
+        };
+        auto trig = colorTrig((minX + maxX) / 2, c.to) + colorTrig(maxX + 30.f, c.back);
+        if (auto shifts = editor->createObjectsFromString(gd::string(trig), true, true)) created->addObjectsFromArray(shifts);
     }
 
     // One undo step for the whole decoration, then select it so it's easy to tweak or delete.
@@ -752,6 +931,7 @@ void DecoratorPopup::runGeneration(Result<styles::Result> res, std::string const
             self->m_result = std::move(r.objects);
             self->m_resultColors = std::move(r.colors);
             self->m_resultPulse = r.pulse;
+            self->m_resultShift = r.shift;
             self->showResult(fmt::format("{} (from {}): {} objects on {}. Press again for the next variation.",
                 label, r.source, self->m_result.size(), r.summary));
         }),
@@ -769,7 +949,10 @@ void DecoratorPopup::onDecorate(CCObject*) {
     if (m_busy) return;
     closePanel();
     auto key = fmt::format("style:{}:{}", m_style.level, m_style.index);
-    runGeneration(styles::generate(m_style, m_selection, nextVariant(key)), styles::name(m_style));
+    int v = nextVariant(key);
+    auto ref = m_style;
+    m_lastGen = [this, ref, v] { return styles::generate(ref, m_selection, v); };
+    runGeneration(m_lastGen(), styles::name(m_style));
 }
 
 void DecoratorPopup::onSend(CCObject*) {
@@ -777,8 +960,9 @@ void DecoratorPopup::onSend(CCObject*) {
     closePanel();
     std::string prompt = m_input->getString();
     Mod::get()->setSavedValue<std::string>("last-prompt", prompt);
-    runGeneration(styles::generateFromPrompt(prompt, m_selection, nextVariant("prompt:" + prompt)),
-        prompt.empty() ? std::string("All levels") : std::string("Your description"));
+    int v = nextVariant("prompt:" + prompt);
+    m_lastGen = [this, prompt, v] { return styles::generateFromPrompt(prompt, m_selection, v); };
+    runGeneration(m_lastGen(), prompt.empty() ? std::string("All levels") : std::string("Your description"));
 }
 
 void DecoratorPopup::onDice(CCObject*) {

@@ -62,10 +62,17 @@ for t, names in sorted(types.items(), key=lambda kv: -len(kv[1])):
         if n in idx:
             lv = d['levels'][idx[n]]; lv['type'] = t
             for w in TYPE_WORDS[t].split(): lv['tags'][w] = lv['tags'].get(w, 0) + 2.0
+aredl = json.load(open(P + '/aredl_tags.json'))
+for lv in d['levels']:
+    for tg in aredl.get(lv['name'].lower().strip(), []):
+        tl = tg.lower()
+        if tl in ('1.9', '1.9ps', '2.0', '2.1', '2.2'): lv['tags']['v' + tl.replace('ps', '')] = 2.0
+        if tl == 'circles': lv['tags']['circles'] = lv['tags'].get('circles', 0) + 2; lv['tags']['nine'] = lv['tags'].get('nine', 0) + 2
 for lv in d['levels']:
     e = eff.get(lv['name'], {})
     lv['eff'] = [round(e.get('pulse_gap', 0) or 123.0, 1), round(e.get('fade_in', 0), 3), round(e.get('hold', 0), 3),
-                 round(e.get('fade_out', 0.3) or 0.3, 3), int(e.get('pulses', 0))]
+                 round(e.get('fade_out', 0.3) or 0.3, 3), int(e.get('pulses', 0)),
+                 round(e.get('color_change_duration', 0.5), 3), round(e.get('color_changes_per_1000', 0), 3)]
 d.pop('styles', None)
 # family of every deco piece the styles use, so the mod can give each piece a role
 used = set()

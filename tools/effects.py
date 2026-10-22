@@ -56,7 +56,14 @@ for fn in sorted(x for x in os.listdir(NPZ) if x.endswith('.npz')):
     deco_channels = set(c for c, n in cnt.most_common(12))
     on_deco = sum(1 for t in pul if f(t.get('52')) == 0 and int(f(t.get('51'))) in deco_channels) / max(1, len(pul))
     white = sum(1 for t in pul if f(t.get('7')) > 200 and f(t.get('8')) > 200 and f(t.get('9')) > 200) / max(1, len(pul))
-    out[meta['name']] = {
+    # color changes on the channels decoration actually uses (non spawn-triggered, after the start of the level)
+    xs_all = a[:, 1]
+    span = max(1.0, float(np.percentile(xs_all, 98) - np.percentile(xs_all, 2)))
+    cts = [t for t in bylvl[meta['name']] if t['1'] == 899 and t.get('62') not in (1, '1') and int(f(t.get('23', 1))) in deco_channels and f(t.get('2')) > 300]
+    cdur = [f(t.get('10')) for t in cts]
+    out_color = {'color_changes_per_1000': round(1000 * len(cts) / span, 3), 'color_change_duration': float(np.median(cdur)) if cdur else 0.5,
+                 'color_change_instant_share': round(sum(1 for v in cdur if v <= 0.01) / max(1, len(cdur)), 3)}
+    out[meta['name']] = {**out_color,
         'glow_opacity': round(wmed(gl), 3), 'solid_opacity': round(wmed(so), 3),
         'pulses': len(pul), 'pulse_gap': float(np.median(gaps)) if len(gaps) else 0.0,
         'fade_in': float(np.median([f(t.get('45')) for t in pul])) if pul else 0.0,

@@ -45,6 +45,7 @@ namespace {
         std::vector<SceneryItem> scenery;
         std::unordered_map<std::string, float> tags;
         float pulseGap = 123.f, fadeIn = 0, hold = 0, fadeOut = .3f;
+        float colorDur = .15f, colorRate = 0;  // color change duration, changes per 1000 units
     };
     struct DecoType {
         std::string name;
@@ -90,6 +91,7 @@ namespace {
         if (s.contains("eff")) {
             auto e = arr(s["eff"]);
             if (e.size() >= 4) { st.pulseGap = fnum(e[0]); st.fadeIn = fnum(e[1]); st.hold = fnum(e[2]); st.fadeOut = fnum(e[3]); }
+            if (e.size() >= 7) { st.colorDur = fnum(e[5]); st.colorRate = fnum(e[6]); }
         }
         return st;
     }
@@ -194,7 +196,7 @@ namespace {
         auto maxObjects = static_cast<size_t>(mod->getSettingValue<int64_t>("max-objects"));
         int chStart = static_cast<int>(mod->getSettingValue<int64_t>("color-channel-start"));
         int maxLayers = static_cast<int>(mod->getSettingValue<int64_t>("layers-per-side"));
-        float sceneryAmount = static_cast<float>(mod->getSettingValue<double>("scenery-amount"));
+        float sceneryAmount = 1.f;  // background on/off is an Options toggle
 
         // Sort the selection by hitbox.
         struct Anchor { SelectedObject const* o; std::string cls; };
@@ -246,7 +248,16 @@ namespace {
                 return ok[static_cast<size_t>(skip) % ok.size()];
             };
             std::vector<Item const*> chosen;
-            auto add = [&](Item const* it) { if (it) chosen.push_back(it); };
+            auto const& op = styles::options();
+            auto add = [&](Item const* it) {
+                if (!it) return;
+                auto r = roleOf(it->id);
+                if (r == Role::Body && !op.body) return;
+                if (r == Role::Glow && !(gridded ? op.glow : op.hazardGlow)) return;
+                if ((r == Role::Line || r == Role::Chain) && !op.lines) return;
+                if (r == Role::Particle && !(gridded ? op.particles : (op.particles || op.hazardGlow))) return;
+                chosen.push_back(it);
+            };
             if (side == "center") {
                 if (gridded) add(best(Role::Body, 3.f, 0));
                 if (gridded && is3D) add(best(Role::Persp, 3.f, variant));
@@ -317,7 +328,8 @@ namespace {
                     deco.x = o.x + lx * std::cos(th) + ly * std::sin(th);
                     deco.y = o.y - lx * std::sin(th) + ly * std::cos(th);
                     deco.rotation = std::fmod(it->rot + o.rotation + sideAngle(side) + 720.f, 360.f);
-                    deco.scaleX = it->sx * sizeK; deco.scaleY = it->sy * sizeK;
+                    float gk = roleOf(it->id) == Role::Glow ? styles::options().glowScale : 1.f;
+                    deco.scaleX = it->sx * sizeK * gk; deco.scaleY = it->sy * sizeK * gk;
                     deco.flipX = it->flipChance > .5f;
                     deco.zLayer = it->z; deco.zOrder = it->zo;
                     if (roleOf(it->id) == Role::Body) { deco.zLayer = 3; deco.zOrder = -10; }  // B1: behind the block, as its fill
@@ -329,7 +341,8 @@ namespace {
         }
 
         // Background: neat rows of the level's most used background pieces, snapped to the grid.
-        if (!style.scenery.empty() && sceneryAmount > 0) {
+        if (styles::options().scenery && sceneryAmount <= 0) sceneryAmount = 1.f;
+        if (!style.scenery.empty() && sceneryAmount > 0 && styles::options().scenery) {
             float minX = INFINITY, maxX = -INFINITY, minY = INFINITY, maxY = -INFINITY;
             for (auto const& a : anchors) {
                 minX = std::min(minX, a.o->x); maxX = std::max(maxX, a.o->x);
@@ -386,14 +399,48 @@ namespace {
         ccColor3B glow3{up(glowC[0]), up(glowC[1]), up(glowC[2])};
         if (lum(detail) < 150) detail = {235, 235, 240, 0};
         auto c3 = [](std::array<int, 4> const& p) { return ccColor3B{static_cast<GLubyte>(p[0]), static_cast<GLubyte>(p[1]), static_cast<GLubyte>(p[2])}; };
-        res.colors.push_back({chStart, c3(body), false});
-        res.colors.push_back({chStart + 1, glow3, true});
-        res.colors.push_back({chStart + 2, c3(detail), false});
-        res.colors.push_back({chStart + 3, glow3, false});
+        auto const& op = styles::options();
+        // hue shift + brightness from the Options tab
+        auto adjust = [&](ccColor3B c, float extraHue = 0.f) {
+            float r = c.r / 255.f, g = c.g / 255.f, b = c.b / 255.f;
+            float mx = std::max({r, g, b}), mn = std::min({r, g, b}), d = mx - mn, h = 0;
+            if (d > 1e-4f) {
+                if (mx == r) h = std::fmod((g - b) / d, 6.f); else if (mx == g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+                h *= 60.f;
+            }
+            float sat = mx > 0 ? d / mx : 0, val = std::min(1.f, mx * op.brightness);
+            h = std::fmod(h + op.hue + extraHue + 720.f, 360.f);
+            float C = val * sat, X = C * (1 - std::abs(std::fmod(h / 60.f, 2.f) - 1)), m = val - C;
+            float rr, gg, bb;
+            if (h < 60) { rr = C; gg = X; bb = 0; } else if (h < 120) { rr = X; gg = C; bb = 0; } else if (h < 180) { rr = 0; gg = C; bb = X; }
+            else if (h < 240) { rr = 0; gg = X; bb = C; } else if (h < 300) { rr = X; gg = 0; bb = C; } else { rr = C; gg = 0; bb = X; }
+            return ccColor3B{static_cast<GLubyte>((rr + m) * 255), static_cast<GLubyte>((gg + m) * 255), static_cast<GLubyte>((bb + m) * 255)};
+        };
+        ccColor3B bodyC = adjust(c3(body)), detailC = adjust(c3(detail));
+        glow3 = adjust(glow3);
+        if (op.colorMode == 2) { bodyC = {6, 6, 8}; glow3 = {235, 235, 245}; detailC = {255, 255, 255}; }
+        if (op.colorMode != 1) {  // mode 1 keeps the channels' current colors
+            res.colors.push_back({chStart, bodyC, false, op.bodyOpacity});
+            res.colors.push_back({chStart + 1, glow3, true, op.glowOpacity});
+            res.colors.push_back({chStart + 2, detailC, false, 1.f});
+            res.colors.push_back({chStart + 3, glow3, false, 1.f});
+        }
+        // Color shift: the glow changes to the style's other accent (or a 60 degree hue turn) mid-structure, then back.
+        {
+            ccColor3B alt = glow3;
+            int bestSat = -1;
+            for (auto const& p : style.pal) {
+                int sv = sat(p);
+                auto c = adjust(c3(p));
+                if (sv > 40 && (std::abs(c.r - glow3.r) + std::abs(c.g - glow3.g) + std::abs(c.b - glow3.b)) > 120 && sv > bestSat) { bestSat = sv; alt = c; }
+            }
+            if (bestSat < 0) alt = adjust(glow3, 60.f - static_cast<float>(op.hue));  // glow3 is already hue-shifted
+            res.shift = {chStart + 1, alt, glow3, std::clamp(style.colorDur > 0.01f ? style.colorDur : .2f, .1f, 2.f), op.colorShift};
+        }
         res.pulse.channel = chStart + 1;
         res.pulse.color = {static_cast<GLubyte>(std::min(255, glow3.r / 2 + 128)), static_cast<GLubyte>(std::min(255, glow3.g / 2 + 128)),
                            static_cast<GLubyte>(std::min(255, glow3.b / 2 + 128))};
-        res.pulse.gap = std::clamp(style.pulseGap, 60.f, 360.f);
+        res.pulse.gap = styles::options().pulseBlocks > 0 ? styles::options().pulseBlocks * 30.f : std::clamp(style.pulseGap, 60.f, 360.f);
         res.pulse.fadeIn = style.fadeIn; res.pulse.hold = style.hold; res.pulse.fadeOut = std::clamp(style.fadeOut, .05f, 1.5f);
 
         std::string found;
@@ -468,6 +515,36 @@ namespace {
         if (nm.size() > 2 && prompt.find(nm) != std::string::npos) sc += 40.f;
         return sc;
     }
+}
+
+styles::Options& styles::options() {
+    static Options o = [] {
+        Options o;
+        auto m = Mod::get();
+        auto b = [&](char const* k, bool d) { return m->getSavedValue<bool>(k, d); };
+        auto f = [&](char const* k, float d) { return static_cast<float>(m->getSavedValue<double>(k, d)); };
+        o.body = b("opt-body", true); o.glow = b("opt-glow", true); o.lines = b("opt-lines", true);
+        o.hazardGlow = b("opt-hazard", true); o.particles = b("opt-particles", true); o.scenery = b("opt-scenery", false);
+        o.pulses = b("opt-pulses", true); o.colorShift = b("opt-shift", false);
+        o.glowScale = f("opt-glow-scale", 1.f); o.glowOpacity = f("opt-glow-opacity", 1.f); o.bodyOpacity = f("opt-body-opacity", 1.f);
+        o.hue = static_cast<int>(m->getSavedValue<int64_t>("opt-hue", 0)); o.brightness = f("opt-brightness", 1.f);
+        o.pulseBlocks = static_cast<int>(m->getSavedValue<int64_t>("opt-pulse-blocks", 0));
+        o.colorMode = static_cast<int>(m->getSavedValue<int64_t>("opt-color-mode", 0));
+        return o;
+    }();
+    return o;
+}
+
+void styles::saveOptions() {
+    auto const& o = options();
+    auto m = Mod::get();
+    m->setSavedValue<bool>("opt-body", o.body); m->setSavedValue<bool>("opt-glow", o.glow); m->setSavedValue<bool>("opt-lines", o.lines);
+    m->setSavedValue<bool>("opt-hazard", o.hazardGlow); m->setSavedValue<bool>("opt-particles", o.particles);
+    m->setSavedValue<bool>("opt-scenery", o.scenery); m->setSavedValue<bool>("opt-pulses", o.pulses); m->setSavedValue<bool>("opt-shift", o.colorShift);
+    m->setSavedValue<double>("opt-glow-scale", o.glowScale); m->setSavedValue<double>("opt-glow-opacity", o.glowOpacity);
+    m->setSavedValue<double>("opt-body-opacity", o.bodyOpacity); m->setSavedValue<int64_t>("opt-hue", o.hue);
+    m->setSavedValue<double>("opt-brightness", o.brightness); m->setSavedValue<int64_t>("opt-pulse-blocks", o.pulseBlocks);
+    m->setSavedValue<int64_t>("opt-color-mode", o.colorMode);
 }
 
 size_t styles::typeCount() { return data().types.size(); }
@@ -581,12 +658,11 @@ void styles::applyColors(std::vector<ChannelColor> const& colors) {
     }
     if (editor->m_effectManager) managers.insert(editor->m_effectManager);
 
-    float glowOpacity = static_cast<float>(Mod::get()->getSettingValue<double>("glow-opacity"));
     for (auto mgr : managers) {
         for (auto const& c : colors) {
             auto action = mgr->getColorAction(c.channel);
             if (!action) continue;
-            float op = c.blending ? glowOpacity : 1.f;
+            float op = std::clamp(c.opacity, 0.f, 1.f);
             action->m_fromColor = c.color;
             action->m_color = c.color;
             action->m_blending = c.blending;
