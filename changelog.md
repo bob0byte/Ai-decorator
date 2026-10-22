@@ -1,3 +1,10 @@
+# v0.8.0
+- Existing decoration, triggers and no-touch objects in the selection are skipped (they were being decorated as if they were blocks).
+- Clean rules: each block gets one body fill (behind it) + one glow; each open edge one glow or outline hugging the edge; spikes/saws one glow.
+- Only real deco pieces are used (glows, outlines, lines, particles, rings, chains; 3D pieces only in 3D styles).
+- Colors by role: dark body, bright blending glow, light lines, glow-colored particles.
+- At most 16 beat pulses. Background scenery off by default. AI button is round again.
+
 # v0.7.0
 - Decoration is placed in order: every open side of the same hitbox gets the same pieces, stacked in the source level's layer order (no more random picks).
 - Styles are now community deco types learned from the pack: Glow, Classic, Hell, 3D, Particles, Effect, Retro, Minimal, Nine Circles, Art, Modern.

@@ -67,6 +67,13 @@ for lv in d['levels']:
     lv['eff'] = [round(e.get('pulse_gap', 0) or 123.0, 1), round(e.get('fade_in', 0), 3), round(e.get('hold', 0), 3),
                  round(e.get('fade_out', 0.3) or 0.3, 3), int(e.get('pulses', 0))]
 d.pop('styles', None)
+# family of every deco piece the styles use, so the mod can give each piece a role
+used = set()
+for lv in d['levels']:
+    for sl in lv['slots']:
+        for it in sl['items']: used.add(it[0])
+    for it in lv['scn']['items']: used.add(it[0])
+d['fams'] = {str(i): fam.get(i, '') for i in sorted(used) if fam.get(i)}
 d['cats'] = cats
 js = json.dumps(d, separators=(',', ':'))
 assert ')__json__"' not in js

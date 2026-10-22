@@ -15,6 +15,7 @@ struct SelectedObject {
     int type = 0;  // GameObjectType
     float hbW = 0, hbH = 0;  // hitbox size in the editor
     float radius = 0;        // circular hitbox radius (saws)
+    bool isDeco = false;     // decoration / no-touch / trigger: never decorated as a hitbox
 };
 
 // One decoration object to place.

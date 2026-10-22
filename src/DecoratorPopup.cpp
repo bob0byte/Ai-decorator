@@ -579,7 +579,9 @@ void DecoratorPopup::onApply(CCObject*) {
         for (auto const& d : m_result) { minX = std::min(minX, d.x); maxX = std::max(maxX, d.x); maxY = std::max(maxY, d.y); }
         auto const& p = m_resultPulse;
         std::string trig;
-        for (float x = minX - 30.f; x <= maxX; x += p.gap) {
+        // At most 16 pulses; spread them out on long selections.
+        float gap = std::max(p.gap, (maxX - minX) / 16.f);
+        for (float x = minX - 30.f; x <= maxX; x += gap) {
             trig += fmt::format("1,1006,2,{},3,{},51,{},52,0,45,{},46,{},47,{},7,{},8,{},9,{};",
                 decorator::fmtNum(x), decorator::fmtNum(maxY + 90.f), p.channel,
                 decorator::fmtNum(p.fadeIn), decorator::fmtNum(p.hold), decorator::fmtNum(p.fadeOut),

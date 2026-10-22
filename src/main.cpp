@@ -14,8 +14,7 @@ class $modify(AIDecoratorEditorUI, EditorUI) {
         auto bg = CCNode::create();
         bg->setContentSize({R * 2, R * 2});
         auto draw = CCDrawNode::create();
-        draw->drawDot({R, R}, R, {0.85f, 0.88f, 0.95f, 1.f});          // border ring
-        draw->drawDot({R, R}, R - 2.5f, {0.13f, 0.14f, 0.20f, 1.f});   // fill
+        draw->drawCircle({R, R}, R - 1.5f, {0.13f, 0.14f, 0.20f, 1.f}, 2.5f, {0.85f, 0.88f, 0.95f, 1.f}, 48);
         bg->addChild(draw);
         auto label = CCLabelBMFont::create("AI", "bigFont.fnt");
         label->setScale(.55f);

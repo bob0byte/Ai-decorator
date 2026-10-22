@@ -54,6 +54,7 @@ namespace {
         std::vector<DecoType> types;
         std::vector<Style> levels;
         std::unordered_map<int, std::string> category;  // known gameplay object id -> hitbox class
+        std::unordered_map<int, std::string> family;    // deco id -> sprite family
         bool ok = false;
         std::string error;
     };
@@ -112,6 +113,7 @@ namespace {
                 }
                 if (!dt.levels.empty()) d.types.push_back(std::move(dt));
             }
+            for (auto const& [id, f] : root["fams"]) d.family[std::atoi(id.c_str())] = f.asString().unwrapOr("");
             for (auto const& [cat, ids] : root["cats"]) {
                 for (auto const& id : arr(ids)) d.category[inum(id)] = cat;
             }
@@ -166,6 +168,23 @@ namespace {
         return {cls, "block"};
     }
 
+    // What a deco piece is for. Pieces with no clear role (random textured chunks, unknown 2.2 objects) aren't used.
+    enum class Role { None, Body, Glow, Line, Particle, Chain, Persp };
+    Role roleOf(int id) {
+        auto const& fams = data().family;
+        auto it = fams.find(id);
+        if (it == fams.end()) return Role::None;
+        auto const& f = it->second;
+        auto has = [&](char const* k) { return f.find(k) != std::string::npos; };
+        if (has("gradient") || has("glow")) return Role::Glow;
+        if (has("persp")) return Role::Persp;
+        if (has("chain")) return Role::Chain;
+        if (has("lightsquare") || has("lighttriangle") || has("whiteblock") || f == "d_square" || f.rfind("square_", 0) == 0) return Role::Body;
+        if (has("outline") || has("gridline") || has("d_bar") || has("smallbar") || has("d_link")) return Role::Line;
+        if (has("ball") || has("scalefadering") || has("circle") || has("spark")) return Role::Particle;
+        return Role::None;
+    }
+
     std::string nice(std::string c) { std::replace(c.begin(), c.end(), '_', ' '); return c; }
 
     // Decorate deterministically: every open side of every hitbox of the same kind gets the same
@@ -187,12 +206,7 @@ namespace {
             anchors.push_back({&o, cls});
             if (cls == "block" || cls == "platform" || cls == "slope") cells.insert(cellOf(o.x, o.y));
         }
-        if (anchors.empty()) {
-            for (auto const& o : selection) {
-                anchors.push_back({&o, "block"});
-                cells.insert(cellOf(o.x, o.y));
-            }
-        }
+        if (anchors.empty()) return Err("No blocks, spikes or saws in the selection (decoration and triggers are skipped).");
         // Process hitboxes left to right, bottom to top, so the result is built in order.
         std::sort(anchors.begin(), anchors.end(), [](Anchor const& a, Anchor const& b) {
             return a.o->x != b.o->x ? a.o->x < b.o->x : a.o->y < b.o->y;
@@ -201,31 +215,52 @@ namespace {
         std::map<std::pair<std::string, std::string>, Slot const*> slotMap;
         for (auto const& sl : style.slots) slotMap[{sl.anchor, sl.side}] = &sl;
 
-        // Which pieces each (hitbox kind, side) gets: the most used ones, in order.
+        // Which pieces each (hitbox kind, side) gets. Clean rules on top of what the level uses:
+        //  - block/platform/slope center: one body piece (kept inside the hitbox) + one glow
+        //  - open edges: one glow (or an outline/line if the level has no edge glow), hugging the edge
+        //  - spikes, saws, orbs...: one glow or ring on the object itself; chains only under blocks in Hell styles
+        bool is3D = style.type == "3D", isHell = style.type == "Hell";
         std::map<std::pair<std::string, std::string>, std::vector<Item const*>> picks;
         auto pickFor = [&](std::string const& cls, std::string const& side) -> std::vector<Item const*> const& {
             auto key = std::make_pair(cls, side);
             if (auto it = picks.find(key); it != picks.end()) return it->second;
-            Slot const* slot = nullptr;
+            bool gridded = cls == "block" || cls == "platform" || cls == "slope";
+            std::vector<Item const*> ranked;
             for (auto const& f : fallbacks(cls)) {
-                if (auto it = slotMap.find({f, side}); it != slotMap.end()) { slot = it->second; break; }
-            }
-            std::vector<Item const*> chosen;
-            if (slot && slot->rate >= 0.15f) {
-                std::vector<Item const*> ranked;
-                for (auto const& it : slot->items) if (usable(it.id)) ranked.push_back(&it);
-                int layers = std::clamp(static_cast<int>(std::lround(slot->rate)), 1, std::max(1, maxLayers));
-                for (int l = 0; l < layers && l < static_cast<int>(ranked.size()); l++) chosen.push_back(ranked[l]);
-                // Variations swap the top layer's partner for the next-most-used piece.
-                if (variant > 0 && !chosen.empty() && static_cast<int>(ranked.size()) > layers) {
-                    int extra = static_cast<int>(ranked.size()) - layers + 1;
-                    chosen.back() = ranked[layers - 1 + (variant % extra)];
+                if (auto it = slotMap.find({f, side}); it != slotMap.end() && it->second->rate >= 0.1f) {
+                    for (auto const& item : it->second->items) if (usable(item.id)) ranked.push_back(&item);
+                    break;
                 }
-                // Back-to-front, like the source level stacks them.
-                std::sort(chosen.begin(), chosen.end(), [](Item const* a, Item const* b) {
-                    return a->z != b->z ? a->z < b->z : a->zo < b->zo;
-                });
             }
+            // best piece of a role that sits sensibly; `skip` lets variations take the next one
+            auto best = [&](Role role, float maxOut, int skip) -> Item const* {
+                std::vector<Item const*> ok;
+                for (auto it : ranked) {
+                    auto r = roleOf(it->id);
+                    if (r != role) continue;
+                    if (std::abs(it->out) > maxOut || std::abs(it->along) > 8.f) continue;
+                    if (std::max(it->sx, it->sy) > 2.5f || std::min(it->sx, it->sy) < .2f) continue;
+                    ok.push_back(it);
+                }
+                if (ok.empty()) return nullptr;
+                return ok[static_cast<size_t>(skip) % ok.size()];
+            };
+            std::vector<Item const*> chosen;
+            auto add = [&](Item const* it) { if (it) chosen.push_back(it); };
+            if (side == "center") {
+                if (gridded) add(best(Role::Body, 3.f, 0));
+                if (gridded && is3D) add(best(Role::Persp, 3.f, variant));
+                add(best(Role::Glow, 4.f, variant));
+                if (!gridded && chosen.empty()) add(best(Role::Particle, 4.f, variant));
+            } else if (gridded) {
+                auto g = best(Role::Glow, 30.f, variant);
+                if (g && std::abs(g->out) >= 6.f) add(g);
+                else add(best(Role::Line, 18.f, variant));
+                if (isHell && side == "bottom") add(best(Role::Chain, 40.f, 0));
+            }
+            std::sort(chosen.begin(), chosen.end(), [](Item const* a, Item const* b) {
+                return a->z != b->z ? a->z < b->z : a->zo < b->zo;
+            });
             return picks[key] = std::move(chosen);
         };
 
@@ -239,7 +274,16 @@ namespace {
             if (!placed.insert(key).second) return;
             out.push_back(o);
         };
-        auto channelFor = [&](int pal) { return pal >= 0 && pal < static_cast<int>(style.pal.size()) ? chStart + pal : 0; };
+        // Channels by role: body, glow (blending), line/detail, particles.
+        auto roleChannel = [&](int id) {
+            switch (roleOf(id)) {
+                case Role::Body: case Role::Persp: return chStart;
+                case Role::Glow: return chStart + 1;
+                case Role::Line: case Role::Chain: return chStart + 2;
+                case Role::Particle: return chStart + 3;
+                default: return chStart + 2;
+            }
+        };
 
         std::map<std::string, int> classCounts;
         for (auto const& a : anchors) {
@@ -276,7 +320,8 @@ namespace {
                     deco.scaleX = it->sx * sizeK; deco.scaleY = it->sy * sizeK;
                     deco.flipX = it->flipChance > .5f;
                     deco.zLayer = it->z; deco.zOrder = it->zo;
-                    deco.mainColor = channelFor(it->pal);
+                    if (roleOf(it->id) == Role::Body) { deco.zLayer = 3; deco.zOrder = -10; }  // B1: behind the block, as its fill
+                    deco.mainColor = roleChannel(it->id);
                     deco.detailColor = deco.mainColor;
                     place(deco);
                 }
@@ -291,7 +336,10 @@ namespace {
                 minY = std::min(minY, a.o->y); maxY = std::max(maxY, a.o->y);
             }
             std::vector<SceneryItem const*> top;
-            for (auto const& s : style.scenery) if (usable(s.id) && top.size() < 2) top.push_back(&s);
+            for (auto const& s : style.scenery) {
+                auto r = roleOf(s.id);
+                if (usable(s.id) && (r == Role::Particle || r == Role::Glow) && top.size() < 2) top.push_back(&s);
+            }
             int step = std::clamp(static_cast<int>(std::lround(2.f / std::max(.05f, style.sceneryRate * sceneryAmount))), 1, 8);
             for (size_t k = 0; k < top.size(); k++) {
                 auto s = top[k];
@@ -303,7 +351,7 @@ namespace {
                     DecoObject deco;
                     deco.id = s->id; deco.x = x; deco.y = y;
                     deco.rotation = s->rot; deco.scaleX = s->sx; deco.scaleY = s->sy;
-                    deco.zLayer = s->z; deco.mainColor = channelFor(s->pal); deco.detailColor = deco.mainColor;
+                    deco.zLayer = s->z; deco.mainColor = roleChannel(s->id); deco.detailColor = deco.mainColor;
                     place(deco);
                 }
             }
@@ -322,28 +370,29 @@ namespace {
             return a.x < b.x;
         });
 
-        for (size_t i = 0; i < style.pal.size(); i++) {
-            auto const& p = style.pal[i];
-            res.colors.push_back({chStart + static_cast<int>(i),
-                {static_cast<GLubyte>(p[0]), static_cast<GLubyte>(p[1]), static_cast<GLubyte>(p[2])}, p[3] != 0});
-        }
-
-        // Beat pulse: the glow color (first blending palette color, else the brightest), flashed brighter.
-        int glow = -1, bright = 0, bestV = -1;
-        for (size_t i = 0; i < style.pal.size(); i++) {
-            auto const& p = style.pal[i];
-            if (glow < 0 && p[3]) glow = static_cast<int>(i);
-            int v = std::max({p[0], p[1], p[2]});
-            if (v > bestV) { bestV = v; bright = static_cast<int>(i); }
-        }
-        if (glow < 0) glow = bright;
+        // Role colors from the level's palette: darkest = body, most colorful = glow (brightened),
+        // lightest = lines/details, glow color again (solid) = particles.
+        auto lum = [](std::array<int, 4> const& p) { return std::max({p[0], p[1], p[2]}); };
+        auto sat = [](std::array<int, 4> const& p) { return std::max({p[0], p[1], p[2]}) - std::min({p[0], p[1], p[2]}); };
+        std::array<int, 4> body{8, 8, 12, 0}, glowC{80, 200, 255, 1}, detail{240, 240, 245, 0};
         if (!style.pal.empty()) {
-            auto const& p = style.pal[glow];
-            float mx = std::max({p[0], p[1], p[2], 1});
-            auto lift = [&](int c) { return static_cast<GLubyte>(std::min(255.f, c / mx * 255.f * .6f + 255.f * .4f)); };
-            res.pulse.channel = chStart + glow;
-            res.pulse.color = {lift(p[0]), lift(p[1]), lift(p[2])};
+            body = *std::min_element(style.pal.begin(), style.pal.end(), [&](auto const& a, auto const& b) { return lum(a) < lum(b); });
+            glowC = *std::max_element(style.pal.begin(), style.pal.end(), [&](auto const& a, auto const& b) { return sat(a) * 2 + lum(a) < sat(b) * 2 + lum(b); });
+            detail = *std::max_element(style.pal.begin(), style.pal.end(), [&](auto const& a, auto const& b) { return lum(a) < lum(b); });
         }
+        if (sat(glowC) < 40) glowC = detail;  // a mono style glows white
+        float gm = std::max(1, lum(glowC));
+        auto up = [&](int c) { return static_cast<GLubyte>(std::min(255.f, c / gm * 235.f)); };
+        ccColor3B glow3{up(glowC[0]), up(glowC[1]), up(glowC[2])};
+        if (lum(detail) < 150) detail = {235, 235, 240, 0};
+        auto c3 = [](std::array<int, 4> const& p) { return ccColor3B{static_cast<GLubyte>(p[0]), static_cast<GLubyte>(p[1]), static_cast<GLubyte>(p[2])}; };
+        res.colors.push_back({chStart, c3(body), false});
+        res.colors.push_back({chStart + 1, glow3, true});
+        res.colors.push_back({chStart + 2, c3(detail), false});
+        res.colors.push_back({chStart + 3, glow3, false});
+        res.pulse.channel = chStart + 1;
+        res.pulse.color = {static_cast<GLubyte>(std::min(255, glow3.r / 2 + 128)), static_cast<GLubyte>(std::min(255, glow3.g / 2 + 128)),
+                           static_cast<GLubyte>(std::min(255, glow3.b / 2 + 128))};
         res.pulse.gap = std::clamp(style.pulseGap, 60.f, 360.f);
         res.pulse.fadeIn = style.fadeIn; res.pulse.hold = style.hold; res.pulse.fadeOut = std::clamp(style.fadeOut, .05f, 1.5f);
 
@@ -455,6 +504,7 @@ ccColor3B styles::swatch(StyleRef ref) {
 }
 
 std::string styles::hitboxClass(SelectedObject const& o) {
+    if (o.isDeco) return "";  // existing decoration, triggers and no-touch objects are left alone
     auto type = static_cast<GameObjectType>(o.type);
     if (type == GameObjectType::Slope) return "slope";
     if (type == GameObjectType::Hazard || type == GameObjectType::AnimatedHazard) {

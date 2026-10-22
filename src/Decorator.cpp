@@ -32,6 +32,7 @@ std::vector<SelectedObject> decorator::collectSelection(EditorUI* ui) {
             static_cast<int>(obj->m_objectType),
             obj->getObjectRect().size.width, obj->getObjectRect().size.height,
             obj->m_objectRadius,
+            obj->m_isDecoration || obj->m_isDecoration2 || obj->m_isNoTouch || obj->m_isPassable || obj->m_isTrigger,
         });
     }
     return out;
