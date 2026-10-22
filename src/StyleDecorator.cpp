@@ -1,6 +1,7 @@
 #include "StyleDecorator.hpp"
 #include "StyleData.hpp"
 #include "NeuralData.hpp"
+#include "ExemplarData.hpp"
 
 #include <Geode/binding/GameObject.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
@@ -190,6 +191,33 @@ namespace {
 
     std::string nice(std::string c) { std::replace(c.begin(), c.end(), '_', ' '); return c; }
 
+    // ------------------------------------------------------------------ real decoration copies
+    // piece: id, dx, dy, rot, sx, sy, z, zo, flipX, flipY, r, g, b, blending
+    using Piece = std::array<float, 14>;
+    using LevelExemplars = std::unordered_map<std::string, std::vector<Piece>>;
+    std::unordered_map<std::string, LevelExemplars> const& exemplars() {
+        static std::unordered_map<std::string, LevelExemplars> ex = [] {
+            std::unordered_map<std::string, LevelExemplars> ex;
+            auto parsed = matjson::parse(EXEMPLAR_JSON);
+            if (!parsed) return ex;
+            auto const root = parsed.unwrap();
+            for (auto const& [level, entries] : root) {
+                auto& lv = ex[level];
+                for (auto const& [key, pieces] : entries) {
+                    auto& list = lv[key];
+                    for (auto const& pc : arr(pieces)) {
+                        Piece p{};
+                        auto v = arr(pc);
+                        for (size_t i = 0; i < 14 && i < v.size(); i++) p[i] = fnum(v[i]);
+                        list.push_back(p);
+                    }
+                }
+            }
+            return ex;
+        }();
+        return ex;
+    }
+
     // ------------------------------------------------------------------ neural network
     // Probabilities of each decoration token for one side of one hitbox.
     // Inputs: hitbox class, side, rotation quarter, deco type, 7x7 neighbourhood of hitbox kinds (see tools/ml_extract.py).
@@ -350,6 +378,109 @@ namespace {
             occ[key] = std::max(occ[key], code);
         }
         int aiType = neuralType(style.type);
+
+        // Exact copy mode: put the source level's real decoration around each hitbox,
+        // chosen by hitbox kind and which sides are open (a typical example from that level).
+        if (styles::options().copyReal) {
+            auto const& all = exemplars();
+            if (auto lvIt = all.find(style.name); lvIt != all.end()) {
+                auto const& lv = lvIt->second;
+                styles::Result res;
+                std::map<std::array<int, 4>, int> colorChannel;  // (r,g,b,blend) -> channel
+                std::set<std::tuple<int, int, int, int>> placedKeys;
+                std::map<std::string, int> counts;
+                auto bitsOf = [](std::string const& sig) { int n = 0; for (char c : sig) n = n * 2 + (c == '1'); return n; };
+                for (auto const& a : anchors) {
+                    auto const& o = *a.o;
+                    bool gridded = a.cls == "block" || a.cls == "platform" || a.cls == "slope";
+                    std::string kind = a.cls == "spike_slope" ? "spike" : a.cls;
+                    std::string sig = "x";
+                    if (gridded) {
+                        auto [cx, cy] = cellOf(o.x, o.y);
+                        sig.clear();
+                        for (auto [dx, dy] : {std::pair{0, 1}, std::pair{0, -1}, std::pair{-1, 0}, std::pair{1, 0}})
+                            sig += cells.count({cx + dx, cy + dy}) ? '0' : '1';
+                    }
+                    // exact pattern, else the closest pattern of the same kind, else a block
+                    std::vector<Piece> const* pieces = nullptr;
+                    if (auto it = lv.find(kind + "|" + sig); it != lv.end()) pieces = &it->second;
+                    if (!pieces && gridded) {
+                        int want = bitsOf(sig), bestD = 99;
+                        for (auto const& [key, list] : lv) {
+                            if (key.rfind(kind + "|", 0) != 0 && key.rfind("block|", 0) != 0) continue;
+                            int d = __builtin_popcount(bitsOf(key.substr(key.find('|') + 1)) ^ want) * 2 + (key.rfind(kind + "|", 0) != 0);
+                            if (d < bestD) { bestD = d; pieces = &list; }
+                        }
+                    }
+                    if (!pieces && !gridded) if (auto it = lv.find(kind + "|x"); it != lv.end()) pieces = &it->second;
+                    if (!pieces) continue;
+                    counts[a.cls]++;
+                    float th = o.rotation * static_cast<float>(M_PI) / 180.f;
+                    for (auto const& p : *pieces) {
+                        int id = static_cast<int>(p[0]);
+                        if (!usable(id)) continue;
+                        auto role = roleOf(id);
+                        auto const& op = styles::options();
+                        if (role == Role::Body && !op.body) continue;
+                        if (role == Role::Glow && !(gridded ? op.glow : op.hazardGlow)) continue;
+                        if ((role == Role::Line || role == Role::Chain) && !op.lines) continue;
+                        if (role == Role::Particle && !op.particles) continue;
+                        float lx = p[1], ly = p[2];
+                        if (o.flipX) lx = -lx;
+                        if (o.flipY) ly = -ly;
+                        DecoObject d;
+                        d.id = id;
+                        d.x = o.x + lx * std::cos(th) + ly * std::sin(th);
+                        d.y = o.y - lx * std::sin(th) + ly * std::cos(th);
+                        d.rotation = std::fmod(p[3] + o.rotation + 720.f, 360.f);
+                        float gk = role == Role::Glow ? op.glowScale : 1.f;
+                        d.scaleX = p[4] * gk; d.scaleY = p[5] * gk;
+                        d.zLayer = static_cast<int>(p[6]); d.zOrder = static_cast<int>(p[7]);
+                        d.flipX = p[8] > .5f; d.flipY = p[9] > .5f;
+                        std::array<int, 4> col{static_cast<int>(p[10]), static_cast<int>(p[11]), static_cast<int>(p[12]), p[13] > .5f ? 1 : 0};
+                        auto cit = colorChannel.find(col);
+                        int ch;
+                        if (cit != colorChannel.end()) ch = cit->second;
+                        else if (colorChannel.size() < 12) { ch = chStart + static_cast<int>(colorChannel.size()); colorChannel[col] = ch; }
+                        else {  // out of channels: reuse the closest color
+                            int bestD = 1 << 30; ch = chStart;
+                            for (auto const& [c, chn] : colorChannel) {
+                                int dd = std::abs(c[0] - col[0]) + std::abs(c[1] - col[1]) + std::abs(c[2] - col[2]) + (c[3] != col[3]) * 300;
+                                if (dd < bestD) { bestD = dd; ch = chn; }
+                            }
+                        }
+                        d.mainColor = ch; d.detailColor = ch;
+                        auto key = std::make_tuple(d.id, static_cast<int>(std::lround(d.x)), static_cast<int>(std::lround(d.y)), static_cast<int>(std::lround(d.rotation)) % 360);
+                        if (!placedKeys.insert(key).second || res.objects.size() >= maxObjects) continue;
+                        res.objects.push_back(d);
+                    }
+                }
+                if (!res.objects.empty()) {
+                    std::stable_sort(res.objects.begin(), res.objects.end(), [](DecoObject const& x, DecoObject const& y) {
+                        return x.zLayer != y.zLayer ? x.zLayer < y.zLayer : x.zOrder < y.zOrder;
+                    });
+                    auto const& op = styles::options();
+                    int glowCh = 0;
+                    for (auto const& [c, ch] : colorChannel) {
+                        if (op.colorMode != 1)
+                            res.colors.push_back({ch, {static_cast<GLubyte>(c[0]), static_cast<GLubyte>(c[1]), static_cast<GLubyte>(c[2])}, c[3] != 0,
+                                                  c[3] ? op.glowOpacity : op.bodyOpacity});
+                        if (c[3] && !glowCh) glowCh = ch;
+                    }
+                    if (glowCh) {
+                        res.pulse.channel = glowCh;
+                        res.pulse.color = {255, 255, 255};
+                        res.pulse.gap = op.pulseBlocks > 0 ? op.pulseBlocks * 30.f : std::clamp(style.pulseGap, 60.f, 360.f);
+                        res.pulse.fadeIn = style.fadeIn; res.pulse.hold = style.hold; res.pulse.fadeOut = std::clamp(style.fadeOut, .05f, 1.5f);
+                    }
+                    std::string found;
+                    for (auto const& [c, n] : counts) found += fmt::format("{}{} {}{}", found.empty() ? "" : ", ", n, nice(c), n == 1 ? "" : "s");
+                    res.summary = "real decoration copied; " + found;
+                    res.source = style.name;
+                    return Ok(std::move(res));
+                }
+            }
+        }
 
         // AI network, two passes:
         //  1) ask the network what it would put on every side of every hitbox (given its surroundings)
@@ -658,6 +789,7 @@ styles::Options& styles::options() {
         o.hue = static_cast<int>(m->getSavedValue<int64_t>("opt-hue", 0)); o.brightness = f("opt-brightness", 1.f);
         o.pulseBlocks = static_cast<int>(m->getSavedValue<int64_t>("opt-pulse-blocks", 0));
         o.colorMode = static_cast<int>(m->getSavedValue<int64_t>("opt-color-mode", 0));
+        o.copyReal = b("opt-copy-real", true);
         o.useAI = b("opt-ai", true); o.aiConfidence = f("opt-ai-conf-v2", .08f);
         return o;
     }();
@@ -674,6 +806,7 @@ void styles::saveOptions() {
     m->setSavedValue<double>("opt-body-opacity", o.bodyOpacity); m->setSavedValue<int64_t>("opt-hue", o.hue);
     m->setSavedValue<double>("opt-brightness", o.brightness); m->setSavedValue<int64_t>("opt-pulse-blocks", o.pulseBlocks);
     m->setSavedValue<int64_t>("opt-color-mode", o.colorMode);
+    m->setSavedValue<bool>("opt-copy-real", o.copyReal);
     m->setSavedValue<bool>("opt-ai", o.useAI); m->setSavedValue<double>("opt-ai-conf-v2", o.aiConfidence);
 }
 

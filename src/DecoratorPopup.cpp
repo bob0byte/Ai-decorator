@@ -408,7 +408,8 @@ void DecoratorPopup::onTabOptions(CCObject*) { closePanel(); setTabIndex(2); }
 // Toggles (tags 0-7), steppers (tags 100+ = minus, 200+ = plus), cycles for color mode / theme.
 namespace {
     struct ToggleDef { char const* name; bool styles::Options::* field; };
-    constexpr std::array<ToggleDef, 9> TOGGLES = {{
+    constexpr std::array<ToggleDef, 10> TOGGLES = {{
+        {"Copy real deco", &styles::Options::copyReal},
         {"AI network", &styles::Options::useAI},
         {"Body fill", &styles::Options::body}, {"Edge glow", &styles::Options::glow}, {"Outlines", &styles::Options::lines},
         {"Spike/saw glow", &styles::Options::hazardGlow}, {"Particles", &styles::Options::particles},

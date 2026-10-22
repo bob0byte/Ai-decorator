@@ -25,6 +25,7 @@ namespace styles {
         float brightness = 1.f;     // multiplies every style color
         int pulseBlocks = 0;        // pulse every N blocks (0 = like the source level)
         int colorMode = 0;          // 0 style colors, 1 keep my channel colors, 2 monochrome
+        bool copyReal = true;       // copy the source level's real decoration around each hitbox (best quality)
         bool useAI = true;          // use the trained network to choose pieces (else the rule-based picks)
         float aiConfidence = .08f;   // how sure the network must be before placing a piece
     };

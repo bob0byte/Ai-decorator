@@ -1,3 +1,9 @@
+# v1.1.0
+- New "Copy real deco" mode (on by default): each selected hitbox gets the exact decoration the chosen level
+  put around a hitbox of the same kind with the same open sides - real objects, offsets, rotations, scales, layers and colors.
+  Example: pick Levels > Apocalyptic Trilogy (or type "like Apocalyptic Trilogy") and decorate a block.
+- Big background/art pieces are left out so only block decoration is copied.
+
 # v1.0.1
 - AI decoration is consistent: the network votes across the whole structure and its favourite piece for each
   (hitbox, side) is used on every open side - glow hugs every open edge and fades outward, blocks keep a clean body fill.
