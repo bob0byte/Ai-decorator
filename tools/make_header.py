@@ -80,6 +80,10 @@ for lv in d['levels']:
     for sl in lv['slots']:
         for it in sl['items']: used.add(it[0])
     for it in lv['scn']['items']: used.add(it[0])
+try:
+    for t in json.load(open(P + '/pack/ml/model_meta.json'))['tokens']: used.add(int(t[0]))
+except FileNotFoundError:
+    pass
 d['fams'] = {str(i): fam.get(i, '') for i in sorted(used) if fam.get(i)}
 d['cats'] = cats
 js = json.dumps(d, separators=(',', ':'))

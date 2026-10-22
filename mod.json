@@ -8,7 +8,7 @@
 	},
 	"id": "bob0byte.ai-decorator",
 	"name": "AI Decorator",
-	"version": "v0.9.0",
+	"version": "v1.0.0",
 	"developer": "bob0byte",
 	"description": "Decorate a selected structure in styles learned from 273 real levels, with pulses, color shifts and trigger effects. Works offline.",
 	"tags": [

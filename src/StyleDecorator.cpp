@@ -624,7 +624,7 @@ styles::Options& styles::options() {
         o.hue = static_cast<int>(m->getSavedValue<int64_t>("opt-hue", 0)); o.brightness = f("opt-brightness", 1.f);
         o.pulseBlocks = static_cast<int>(m->getSavedValue<int64_t>("opt-pulse-blocks", 0));
         o.colorMode = static_cast<int>(m->getSavedValue<int64_t>("opt-color-mode", 0));
-        o.useAI = b("opt-ai", true); o.aiConfidence = f("opt-ai-conf", .3f);
+        o.useAI = b("opt-ai", true); o.aiConfidence = f("opt-ai-conf", .12f);
         return o;
     }();
     return o;

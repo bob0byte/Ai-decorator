@@ -1,3 +1,8 @@
+# v1.0.0
+- Built-in AI: a neural network trained on 2 million examples from 273 levels picks the decoration for every side of every hitbox,
+  looking at the 7x7 area around it and the chosen deco type. Runs offline inside the mod.
+- Options: "AI network" toggle (off = rule-based picks) and "AI confidence" (lower = more decoration).
+
 # v0.9.0
 - Learned from 273 levels (second level pack added; 23 million objects), sorted into 11 deco types. Nine Circles uses the AREDL "Circles" tag; AREDL version tags (1.9/2.0/2.1/2.2) are searchable.
 - New Options tab: toggle body fill, edge glow, outlines, spike/saw glow, particles, background, beat pulses, color shift;

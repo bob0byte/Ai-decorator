@@ -26,7 +26,7 @@ namespace styles {
         int pulseBlocks = 0;        // pulse every N blocks (0 = like the source level)
         int colorMode = 0;          // 0 style colors, 1 keep my channel colors, 2 monochrome
         bool useAI = true;          // use the trained network to choose pieces (else the rule-based picks)
-        float aiConfidence = .3f;   // how sure the network must be before placing a piece
+        float aiConfidence = .12f;   // how sure the network must be before placing a piece
     };
     Options& options();
     void saveOptions();
