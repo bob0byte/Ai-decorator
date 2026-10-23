@@ -1,3 +1,6 @@
+# v1.3.0
+- 1,950 more levels (rated/Epic levels): about 2,270 level styles, real decoration copies for all of them, deco types re-sorted.
+
 # v1.2.0
 - 46 more levels (all official RobTop levels, ORBIT, Skeletal Shenanigans, Streetwise...): 311 level styles, real decoration copies for all of them.
 
